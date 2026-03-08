@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN" id="bgimg">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width" />
+<title>大米の主页</title>
+<meta name="description" content="大米の主页">
+<meta name="keywords" content="大米の主页">
+<link rel="icon" href="" mce_href="/dir/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" type="text/css" href="https://www.bootcss.com/p/buttons/css/buttons.css">
+<link rel="stylesheet" type="text/css" href="https://www.bootcss.com/p/buttons/css/showcase.css">
+<link type="text/css" rel="stylesheet" href="style.css" />
+<meta name="referrer" content="no-referrer" />
+<div style="text-align:center;clear:both">
+</div>
+<div class="tooltips">
+<span>
+<iframe src="https://music.163.com/outchain/player?type=2&id=1406025645&auto=1&height=66" width=330 height="300" frameborder="no" marginwidth="0" marginheight="0"></iframe>
+</span>
+</div>
+</head>
+<body>
+<div id="top">
+<main id="top_main">
+<div id="top_logo"><img src="src/tx2.png" onmouseover="mouseOver()" onmouseout="mouseOut()" id="mainimg"></div>
+<div id="top_title"><img id="top_title01" alt="" src="src/toptitle01.png">
+<br class="top_hr_style01">
+</div><br><br>
+<div class="showcase-examples l-over l-center">
+  <a href="https://space.bilibili.com/13713428?from=search&seid=14321154116949079686&spm_id_from=333.337.0.0" title="按钮" class="button button-rounded button-plain button-small-caps button-border" target="_blank">B站</a>
+  <a href="http://www.imomoe.ai/" title="按钮" class="button button-rounded button-plain button-small-caps button-border" target="_blank">动漫</a>
+  <a href="https://www.cupfox.com/" title="按钮" class="button button-rounded button-plain button-small-caps button-border" target="_blank">电影</a>
+</div>
+</main>
+</div>
+<footer id="top_footer">
+<span id="top_copyright">
+<hr class="top_hr_style02">
+<a href="https://space.bilibili.com/13713428?from=search&seid=14321154116949079686&spm_id_from=333.337.0.0">世间从未有真正的灰白之分，我们只是披着兜帽的夜行者。</a>
+<hr class="top_hr_style02">
+<a href="https://space.bilibili.com/13713428?from=search&seid=14321154116949079686&spm_id_from=333.337.0.0">攻守同萌IT</a> copyright © 2020 All Rights Reserved. <a href=""></a>
+</span>
+</footer>
+</body>
+<script>
+	function mouseOver(){
+		document.getElementById("mainimg").src="src/tx2.png";//鼠标悬浮时的旋转图标
+	}
+	function mouseOut()
+	{
+		document.getElementById('mainimg').src ="src/tx.png"//默认的旋转图标
+	}
+</script>
+<script type="text/javascript">
+	function change(){
+		var bodyBgs = [];
+bodyBgs[1] = "http://img.netbian.com/file/2021/0605/d9fcb449fa428b1cc001b40527b99076.jpg";
+bodyBgs[2] = "http://img.netbian.com/file/2021/0605/d9fcb449fa428b1cc001b40527b99076.jpg";
+bodyBgs[3] = "http://img.netbian.com/file/2021/0605/d9fcb449fa428b1cc001b40527b99076.jpg";
+bodyBgs[4] = "http://img.netbian.com/file/2021/1013/d1fed1511a928db1960956a8619ffbce.jpg";
+bodyBgs[5] = "http://img.netbian.com/file/2021/1013/d1fed1511a928db1960956a8619ffbce.jpg";
+bodyBgs[6] = "http://img.netbian.com/file/2021/1013/d1fed1511a928db1960956a8619ffbce.jpg";
+bodyBgs[7] = "http://img.netbian.com/file/2021/0927/c15da7a070698df0cfdcd1ee4b31e539.jpg";
+bodyBgs[8] = "http://img.netbian.com/file/2021/0927/c15da7a070698df0cfdcd1ee4b31e539.jpg";
+bodyBgs[9] = "http://img.netbian.com/file/2021/0927/c15da7a070698df0cfdcd1ee4b31e539.jpg";
+bodyBgs[10] = "http://img.netbian.com/file/2021/0617/6d20675dae44876cead0ddcb77e88a28.jpg";
+bodyBgs[11] = "http://img.netbian.com/file/2021/0617/6d20675dae44876cead0ddcb77e88a28.jpg";
+bodyBgs[12] = "http://img.netbian.com/file/2021/0617/6d20675dae44876cead0ddcb77e88a28.jpg";
+		var randomBgIndex = Math.round( Math.random() * 12 );
+		var img1= document.getElementById('bgimg');
+		img1.style.backgroundImage='url(' + bodyBgs[randomBgIndex] + ')';
+	        window.setTimeout(function(){change()},10000);
+	}
+	change();
+</script>
+<script type="text/javascript" src="src/snow.min.js"></script>        
+<script type="text/javascript">
+createSnow('src/', 60);
+</script>
+</html>

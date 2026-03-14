@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>大米*主页 </title>
+    <title>大米主页 · 动态交互版</title>
     <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -204,6 +204,7 @@
             transform: scale(1.02);
         }
 
+        /* ===== WELCOME 字体：Times New Roman + 亮金渐变，无阴影 ===== */
         .welcome-text {
             font-size: 3.8rem;
             font-weight: 700;
@@ -211,14 +212,12 @@
             text-transform: uppercase;
             margin-bottom: 2.5rem;
             font-family: 'Times New Roman', Times, serif;
-            /* 提亮的金色渐变 */
             background: linear-gradient(135deg, #f5d742, #ffd966, #f5d742);
             background-size: 300% 300%;
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
             animation: glowFlow 6s ease infinite;
-            /* 移除阴影确保清晰 */
             text-shadow: none;
             line-height: 1.2;
         }
@@ -298,7 +297,7 @@
 
         /* 动态插入的播放器行 — 跨三列，占据完整一行 */
         .dynamic-player-row {
-            grid-column: 1 / -1;        /* 跨越所有列 */
+            grid-column: 1 / -1;
             width: 100%;
             background: #000;
             border-radius: 20px;
@@ -312,10 +311,12 @@
             outline: none;
             display: block;
         }
-
-        /* 隐藏的播放器模板 */
-        .video-player-template {
-            display: none;
+        .dynamic-player-row iframe {
+            width: 100%;
+            height: 360px;
+            border: none;
+            border-radius: 20px;
+            display: block;
         }
     </style>
 </head>
@@ -333,8 +334,9 @@
     <!-- 主内容区 -->
     <div class="main-content">
         <div class="content-card">
-            <!-- 头像链接 -->
+            <!-- 头像示例链接 -->
             <img src="src/touxiang.jpg" alt="avatar" class="avatar">
+            <!-- WELCOME 亮金文字 -->
             <h1 class="welcome-text">WELCOME</h1>
 
             <div class="button-group">
@@ -343,7 +345,7 @@
                 <a href="https://example.com" target="_blank" class="btn"><i class="fas fa-film"></i> Show</a>
             </div>
 
-            <!-- 视频网格 (默认显示) -->
+            <!-- 视频网格：前5个为MP4，最后1个为B站iframe示例 -->
             <div class="video-grid" id="videoGrid">
                 <div class="video-item" data-video-src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" data-poster="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg">
                     <img src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg" alt="Big Buck Bunny">
@@ -365,22 +367,20 @@
                     <img src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerFun.jpg" alt="For Bigger Fun">
                     <div class="video-title">For Bigger Fun</div>
                 </div>
-                <div class="video-item" data-video-src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4" data-poster="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg">
-                    <img src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg" alt="Tears of Steel">
-                    <div class="video-title">Tears of Steel</div>
+                <!-- B站视频示例（使用 iframe） -->
+                <div class="video-item" data-iframe-src="https://player.bilibili.com/player.html?isOutside=true&aid=115305309345975&bvid=BV1BfHKzXEC1&cid=32799328044&p=1" data-poster="https://i2.hdslb.com/bfs/archive/e2015a5786574975b75e30fc796a35b7366b073c.jpg@.avif">
+                    <img src="https://i2.hdslb.com/bfs/archive/e2015a5786574975b75e30fc796a35b7366b073c.jpg@.avif" alt="B站示例">
+                    <div class="video-title">B站示例视频</div>
                 </div>
             </div>
 
-            <!-- 隐藏的播放器模板 (用于克隆) -->
-            <div class="video-player-template" id="videoPlayerTemplate">
-                <video controls controlsList="nodownload"></video>
-            </div>
+            <!-- 原播放器模板已移除，改为动态创建 -->
         </div>
     </div>
 
     <script>
         (function() {
-            // 唱片音乐播放控制 (保持不变)
+            // ===== 唱片音乐播放控制 (保持不变) =====
             const playBtn = document.getElementById('playToggle');
             const playIcon = document.getElementById('playIcon');
 
@@ -424,14 +424,12 @@
                 togglePlay();
             });
 
-            // ========== 视频播放：点击小窗可切换打开/关闭 ==========
-            const videoGrid = document.getElementById('videoGrid');
+            // ========== 视频播放：支持 MP4 和 iframe，点击开关 ==========
             const videoItems = document.querySelectorAll('.video-item');
-            const templateContainer = document.getElementById('videoPlayerTemplate');
 
-            let activeVideoItem = null; // 记录当前打开播放器的小窗元素
+            let activeVideoItem = null; // 当前打开播放器的小窗元素
 
-            // 移除已有的动态播放器行，并清空激活状态
+            // 移除已有的动态播放器行
             function removeExistingPlayer() {
                 const existing = document.querySelector('.dynamic-player-row');
                 if (existing) {
@@ -440,60 +438,77 @@
                 }
             }
 
-            // 为指定行（由该行的最后一个元素决定）创建播放器并插入其后
-            function insertPlayerAfterRow(lastItemInRow, videoSrc, poster, clickedItem) {
-                // 克隆模板容器（深克隆，包括video）
-                const newPlayerRow = templateContainer.cloneNode(true);
-                // 移除模板id，添加专用类名，并确保显示
-                newPlayerRow.id = '';
-                newPlayerRow.classList.add('dynamic-player-row');
-                newPlayerRow.style.display = 'block';
+            // 根据点击项创建播放器行（video 或 iframe）
+            function createPlayerRow(item) {
+                const videoSrc = item.dataset.videoSrc;
+                const iframeSrc = item.dataset.iframeSrc;
+                const poster = item.dataset.poster || '';
 
-                // 获取克隆里的video元素并设置src/poster
-                const newVideo = newPlayerRow.querySelector('video');
-                newVideo.src = videoSrc;
-                newVideo.poster = poster;
-                newVideo.load(); // 预加载
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'dynamic-player-row';
 
-                // 插入到该行最后一个元素的后面
+                if (iframeSrc) {
+                    // 创建 iframe 播放器
+                    const iframe = document.createElement('iframe');
+                    iframe.src = iframeSrc;
+                    iframe.setAttribute('frameborder', '0');
+                    iframe.setAttribute('allowfullscreen', 'true');
+                    iframe.setAttribute('scrolling', 'no');
+                    iframe.style.width = '100%';
+                    iframe.style.height = '360px';
+                    iframe.style.borderRadius = '20px';
+                    rowDiv.appendChild(iframe);
+                } else if (videoSrc) {
+                    // 创建 video 播放器
+                    const video = document.createElement('video');
+                    video.controls = true;
+                    video.controlsList = 'nodownload';
+                    video.poster = poster;
+                    video.src = videoSrc;
+                    video.style.width = '100%';
+                    video.style.maxHeight = '360px';
+                    video.style.outline = 'none';
+                    video.load();
+                    // 尝试自动播放
+                    video.play().catch(e => console.log('自动播放被阻止', e));
+                    rowDiv.appendChild(video);
+                }
+
+                return rowDiv;
+            }
+
+            // 插入播放器行到指定行的最后一个元素后面
+            function insertPlayerAfterRow(lastItemInRow, clickedItem) {
+                const newPlayerRow = createPlayerRow(clickedItem);
+                if (!newPlayerRow.hasChildNodes()) return; // 无有效数据则不创建
+
                 lastItemInRow.insertAdjacentElement('afterend', newPlayerRow);
-
-                // 尝试自动播放（用户点击了页面，通常可以）
-                newVideo.play().catch(e => console.log('自动播放被阻止', e));
-
-                // 滚动到新播放器位置（平滑）
                 newPlayerRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-                // 更新激活项
                 activeVideoItem = clickedItem;
             }
 
-            // 点击视频项
             videoItems.forEach(item => {
                 item.addEventListener('click', (e) => {
-                    const videoSrc = item.dataset.videoSrc;
-                    const poster = item.dataset.poster;
-                    if (!videoSrc) return;
+                    // 如果点击项没有视频源也没有iframe源，则不处理
+                    if (!item.dataset.videoSrc && !item.dataset.iframeSrc) return;
 
-                    // 情况1：点击的是当前已打开播放器的同一个项 → 关闭播放器
+                    // 点击的是同一个项 → 关闭播放器
                     if (activeVideoItem === item) {
-                        removeExistingPlayer(); // 内部已置空 activeVideoItem
+                        removeExistingPlayer();
                         return;
                     }
 
-                    // 情况2：点击不同的项 → 移除旧播放器（如果有），然后插入新播放器
-                    removeExistingPlayer(); // 移除旧播放器，activeVideoItem 已置空
+                    // 点击不同的项 → 移除旧的，然后插入新的
+                    removeExistingPlayer();
 
                     // 找到被点击项所在行的最后一个元素
                     const itemsArray = Array.from(document.querySelectorAll('.video-item'));
                     const index = itemsArray.indexOf(item);
-                    // 每行3个，计算该行最后一个元素的索引（索引从0开始，+2得到该行最后一个）
-                    const rowLastIndex = Math.floor(index / 3) * 3 + 2;
+                    const rowLastIndex = Math.floor(index / 3) * 3 + 2; // 每行3个，该行最后一个索引
                     const lastIndex = Math.min(rowLastIndex, itemsArray.length - 1);
                     const lastItemInRow = itemsArray[lastIndex];
 
-                    // 插入新播放器，并传入当前点击项作为激活项
-                    insertPlayerAfterRow(lastItemInRow, videoSrc, poster, item);
+                    insertPlayerAfterRow(lastItemInRow, item);
                 });
             });
         })();

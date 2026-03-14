@@ -210,15 +210,19 @@
             letter-spacing: 8px;
             text-transform: uppercase;
             margin-bottom: 2.5rem;
-            background: linear-gradient(135deg, #f0e68c, #ffb347, #d4af37, #f8f0e0, #f0e68c);
+            font-family: 'Times New Roman', Times, serif;
+            /* 提亮的金色渐变 */
+            background: linear-gradient(135deg, #f5d742, #ffd966, #f5d742);
             background-size: 300% 300%;
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
             animation: glowFlow 6s ease infinite;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            /* 移除阴影确保清晰 */
+            text-shadow: none;
             line-height: 1.2;
         }
+
         @keyframes glowFlow {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }

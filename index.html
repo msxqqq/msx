@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>大米主页</title>
+    <title>大米*主页 </title>
     <!-- Font Awesome 6 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -21,7 +21,7 @@
             overflow-x: hidden;
         }
 
-        /* ===== 固定背景层 (磨砂+颗粒感) ===== */
+        /* ===== 固定背景层 ===== */
         .bg-frost {
             position: fixed;
             top: 0;
@@ -50,39 +50,33 @@
             pointer-events: none;
         }
 
-        /* ===== 左侧黑胶唱片 (固定容器，不旋转，阴影固定) ===== */
+        /* ===== 左侧黑胶唱片 ===== */
         .record {
             position: fixed;
-            left: -400px;          /* 默认露出200px (1/3) */
+            left: -400px;
             top: 12.5vh;
             width: 600px;
             height: 600px;
             border-radius: 50%;
-            /* 阴影固定在容器上，不随内部旋转而改变方向 */
             box-shadow: 
                 0 25px 35px rgba(0, 0, 0, 0.8),
                 inset 0 -15px 25px rgba(0, 0, 0, 0.9),
                 inset 0 15px 35px rgba(255, 255, 255, 0.15);
             transition: left 0.5s cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.3s;
-            z-index: 30;
-            /* 容器本身不旋转 */
+            z-index: 10;
         }
 
-        /* 唱片悬停弹出至3/4 (露出450px) */
         .record:hover {
             left: -150px;
             box-shadow: 0 35px 45px rgba(0, 0, 0, 0.9), inset 0 -15px 25px #000;
         }
 
-        /* 内部旋转层：包含所有黑胶纹理、中心照片，负责旋转 */
         .record-disc {
             width: 100%;
             height: 100%;
             border-radius: 50%;
             background: #0a0a0a;
-            /* 黑胶质感：多层径向渐变 + 高光（已加强径向高光） */
             background-image: 
-                /* 纹路层：细密的同心圆 */
                 repeating-radial-gradient(circle at 50% 50%, 
                     #2d2d2d 0px, 
                     #2d2d2d 2px, 
@@ -92,11 +86,8 @@
                     #3f3f3f 8px,
                     #1a1a1a 8px,
                     #1a1a1a 12px),
-                /* 高光层1：大范围倾斜主高光 (增强透明度，更亮) */
                 radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.3) 0%, transparent 40%),
-                /* 高光层2：边缘细亮环 */
                 radial-gradient(circle at 70% 70%, rgba(255, 240, 200, 0.25) 0%, transparent 50%),
-                /* 高光层3：径向纹理高光 (增强金属感，加亮) */
                 repeating-radial-gradient(circle at 50% 50%, 
                     rgba(255, 255, 255, 0.08) 0px, 
                     rgba(255, 255, 200, 0.1) 4px, 
@@ -107,7 +98,6 @@
             position: relative;
         }
 
-        /* 唱片中间的风景照片 */
         .record-inner {
             position: absolute;
             top: 50%;
@@ -122,20 +112,19 @@
             border: 8px solid #2a2a2a;
             box-shadow: inset 0 0 15px rgba(0,0,0,0.8), 0 8px 20px black;
             z-index: 2;
-            &::after {
-                content: "";
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                border-radius: 50%;
-                background: radial-gradient(circle at 30% 30%, rgba(255,255,240,0.2), transparent 70%);
-                pointer-events: none;
-            }
+        }
+        .record-inner::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255,255,240,0.2), transparent 70%);
+            pointer-events: none;
         }
 
-        /* 播放按钮 — 不旋转，固定在唱片容器中间 */
         .play-btn {
             position: absolute;
             top: 50%;
@@ -155,7 +144,7 @@
             cursor: pointer;
             opacity: 0;
             transition: opacity 0.3s ease, background 0.2s;
-            z-index: 20;
+            z-index: 100;
             box-shadow: 0 0 25px rgba(255,215,0,0.4);
             pointer-events: none;
         }
@@ -171,25 +160,24 @@
             transform: translate(-50%, -50%) scale(1.05);
         }
 
-        /* 唱片旋转动画 */
         @keyframes vinyl-rotate {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
 
-        /* ===== 主内容介绍 (居中) ===== */
+        /* ===== 主内容区 (严格居中) ===== */
         .main-content {
             position: relative;
-            z-index: 10;
+            z-index: 20;
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 2rem 2rem 2rem 220px;
+            padding: 2rem;
             text-align: center;
             pointer-events: none;
         }
+
         .content-card {
             max-width: 700px;
             width: 100%;
@@ -202,7 +190,6 @@
             pointer-events: auto;
         }
 
-        /* 头像 */
         .avatar {
             width: 130px;
             height: 130px;
@@ -217,7 +204,6 @@
             transform: scale(1.02);
         }
 
-        /* ===== WELCOME 字体设计简化，仅保留流光质感 ===== */
         .welcome-text {
             font-size: 3.8rem;
             font-weight: 700;
@@ -230,7 +216,6 @@
             background-clip: text;
             color: transparent;
             animation: glowFlow 6s ease infinite;
-            /* 去掉多余阴影和透视，只留基础文字阴影保证可读性 */
             text-shadow: 0 2px 4px rgba(0,0,0,0.3);
             line-height: 1.2;
         }
@@ -240,7 +225,6 @@
             100% { background-position: 0% 50%; }
         }
 
-        /* 三个按钮 */
         .button-group {
             display: flex;
             gap: 1.8rem;
@@ -274,19 +258,14 @@
             border-color: #ffd966;
         }
 
-        /* 视频网格 */
+        /* 视频网格 — 三列布局 */
         .video-grid {
-            display: none;
+            display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
             margin-top: 2.5rem;
-            opacity: 0;
-            transition: opacity 0.4s;
         }
-        .video-grid.show {
-            display: grid;
-            opacity: 1;
-        }
+
         .video-item {
             background: rgba(0,0,0,0.5);
             border-radius: 20px;
@@ -313,54 +292,54 @@
             color: #eee;
         }
 
-        /* 视频播放器 */
-        .video-player-container {
-            margin-top: 25px;
+        /* 动态插入的播放器行 — 跨三列，占据完整一行 */
+        .dynamic-player-row {
+            grid-column: 1 / -1;        /* 跨越所有列 */
             width: 100%;
-            border-radius: 24px;
-            overflow: hidden;
             background: #000;
-            display: none;
+            border-radius: 20px;
+            overflow: hidden;
             box-shadow: 0 10px 30px black;
+            margin: 0;
         }
-        .video-player-container.show {
-            display: block;
-        }
-        video {
+        .dynamic-player-row video {
             width: 100%;
             max-height: 360px;
             outline: none;
+            display: block;
         }
 
-        /* 已移除网易云外链 */
+        /* 隐藏的播放器模板 */
+        .video-player-template {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="bg-frost"></div>
 
-    <!-- 左侧黑胶唱片 (固定容器，阴影固定不旋转) -->
+    <!-- 左侧黑胶唱片 -->
     <div class="record" id="vinylRecord">
-        <!-- 旋转层：包含所有纹理和中心照片 -->
         <div class="record-disc">
             <div class="record-inner" style="background-image: url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&q=80');"></div>
         </div>
-        <!-- 播放按钮单独放置，不旋转 -->
         <div class="play-btn" id="playToggle"><i class="fas fa-pause" id="playIcon"></i></div>
     </div>
 
     <!-- 主内容区 -->
     <div class="main-content">
         <div class="content-card">
+            <!-- 头像链接 -->
             <img src="src/touxiang.jpg" alt="avatar" class="avatar">
             <h1 class="welcome-text">WELCOME</h1>
 
             <div class="button-group">
                 <a href="https://space.bilibili.com/13713428?spm_id_from=333.1007.0.0" target="_blank" class="btn"><i class="fab fa-bilibili"></i> Bilibili</a>
                 <a href="https://www.artstation.com/nsxjj" target="_blank" class="btn"><i class="fab fa-artstation"></i> ArtStation</a>
-                <button class="btn" id="showVideosBtn"><i class="fas fa-film"></i> Show</button>
+                <a href="https://example.com" target="_blank" class="btn"><i class="fas fa-film"></i> Show</a>
             </div>
 
-            <!-- 视频网格 (每行三个) -->
+            <!-- 视频网格 (默认显示) -->
             <div class="video-grid" id="videoGrid">
                 <div class="video-item" data-video-src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" data-poster="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg">
                     <img src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg" alt="Big Buck Bunny">
@@ -388,15 +367,16 @@
                 </div>
             </div>
 
-            <div class="video-player-container" id="videoPlayerContainer">
-                <video id="mainVideoPlayer" controls controlsList="nodownload"></video>
+            <!-- 隐藏的播放器模板 (用于克隆) -->
+            <div class="video-player-template" id="videoPlayerTemplate">
+                <video controls controlsList="nodownload"></video>
             </div>
         </div>
     </div>
 
     <script>
         (function() {
-            // 唱片音乐播放控制
+            // 唱片音乐播放控制 (保持不变)
             const playBtn = document.getElementById('playToggle');
             const playIcon = document.getElementById('playIcon');
 
@@ -440,34 +420,76 @@
                 togglePlay();
             });
 
-            // 视频网格功能
-            const showBtn = document.getElementById('showVideosBtn');
+            // ========== 视频播放：点击小窗可切换打开/关闭 ==========
             const videoGrid = document.getElementById('videoGrid');
             const videoItems = document.querySelectorAll('.video-item');
-            const playerContainer = document.getElementById('videoPlayerContainer');
-            const mainVideo = document.getElementById('mainVideoPlayer');
+            const templateContainer = document.getElementById('videoPlayerTemplate');
 
-            showBtn.addEventListener('click', () => {
-                videoGrid.classList.toggle('show');
-                if (videoGrid.classList.contains('show')) {
-                    videoGrid.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                } else {
-                    playerContainer.classList.remove('show');
-                    mainVideo.pause();
+            let activeVideoItem = null; // 记录当前打开播放器的小窗元素
+
+            // 移除已有的动态播放器行，并清空激活状态
+            function removeExistingPlayer() {
+                const existing = document.querySelector('.dynamic-player-row');
+                if (existing) {
+                    existing.remove();
+                    activeVideoItem = null;
                 }
-            });
+            }
 
+            // 为指定行（由该行的最后一个元素决定）创建播放器并插入其后
+            function insertPlayerAfterRow(lastItemInRow, videoSrc, poster, clickedItem) {
+                // 克隆模板容器（深克隆，包括video）
+                const newPlayerRow = templateContainer.cloneNode(true);
+                // 移除模板id，添加专用类名，并确保显示
+                newPlayerRow.id = '';
+                newPlayerRow.classList.add('dynamic-player-row');
+                newPlayerRow.style.display = 'block';
+
+                // 获取克隆里的video元素并设置src/poster
+                const newVideo = newPlayerRow.querySelector('video');
+                newVideo.src = videoSrc;
+                newVideo.poster = poster;
+                newVideo.load(); // 预加载
+
+                // 插入到该行最后一个元素的后面
+                lastItemInRow.insertAdjacentElement('afterend', newPlayerRow);
+
+                // 尝试自动播放（用户点击了页面，通常可以）
+                newVideo.play().catch(e => console.log('自动播放被阻止', e));
+
+                // 滚动到新播放器位置（平滑）
+                newPlayerRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+                // 更新激活项
+                activeVideoItem = clickedItem;
+            }
+
+            // 点击视频项
             videoItems.forEach(item => {
-                item.addEventListener('click', () => {
+                item.addEventListener('click', (e) => {
                     const videoSrc = item.dataset.videoSrc;
                     const poster = item.dataset.poster;
-                    if (videoSrc) {
-                        mainVideo.src = videoSrc;
-                        mainVideo.poster = poster;
-                        playerContainer.classList.add('show');
-                        mainVideo.play().catch(e => console.log("视频播放需要手势", e));
-                        playerContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    if (!videoSrc) return;
+
+                    // 情况1：点击的是当前已打开播放器的同一个项 → 关闭播放器
+                    if (activeVideoItem === item) {
+                        removeExistingPlayer(); // 内部已置空 activeVideoItem
+                        return;
                     }
+
+                    // 情况2：点击不同的项 → 移除旧播放器（如果有），然后插入新播放器
+                    removeExistingPlayer(); // 移除旧播放器，activeVideoItem 已置空
+
+                    // 找到被点击项所在行的最后一个元素
+                    const itemsArray = Array.from(document.querySelectorAll('.video-item'));
+                    const index = itemsArray.indexOf(item);
+                    // 每行3个，计算该行最后一个元素的索引（索引从0开始，+2得到该行最后一个）
+                    const rowLastIndex = Math.floor(index / 3) * 3 + 2;
+                    const lastIndex = Math.min(rowLastIndex, itemsArray.length - 1);
+                    const lastItemInRow = itemsArray[lastIndex];
+
+                    // 插入新播放器，并传入当前点击项作为激活项
+                    insertPlayerAfterRow(lastItemInRow, videoSrc, poster, item);
                 });
             });
         })();

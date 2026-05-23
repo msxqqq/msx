@@ -1,0 +1,1466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flowmap 实时绘制工具 · 专业版 V3</title>
+    <style>
+        :root {
+            --bg: #1a1d23;
+            --surface: #252830;
+            --surface2: #2d3139;
+            --text: #e0e0e0;
+            --text2: #a0a4ae;
+            --accent: #4da6ff;
+            --accent2: #ff6b6b;
+            --accent3: #b366ff;
+            --accent4: #3cc73c;
+            --border: #3a3e47;
+            --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+            --radius: 10px;
+            --radius-sm: 6px;
+            --transition: 0.2s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 1250px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .header .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header .logo-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, #4da6ff, #7c5cfc);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+            flex-shrink: 0;
+        }
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .header .badge {
+            font-size: 0.75rem;
+            background: var(--surface2);
+            color: var(--text2);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .canvas-panel {
+            flex: 1;
+            min-width: 340px;
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 16px;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: var(--shadow);
+        }
+        .canvas-panel .panel-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .canvas-panel .panel-label .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .dot.draw {
+            background: #ff6b6b;
+            box-shadow: 0 0 8px #ff6b6b88;
+        }
+        .dot.preview {
+            background: #4da6ff;
+            box-shadow: 0 0 8px #4da6ff88;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            cursor: crosshair;
+            background: #181a1f;
+            border: 2px solid var(--border);
+            transition: border-color var(--transition);
+            touch-action: none;
+        }
+        .canvas-wrapper:active,
+        .canvas-wrapper.drawing {
+            border-color: var(--accent2);
+        }
+        .canvas-wrapper.erasing {
+            border-color: #ffaa00;
+        }
+        .canvas-wrapper.blurring {
+            border-color: var(--accent3);
+        }
+        .canvas-wrapper canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            image-rendering: auto;
+        }
+        .overlay-canvas {
+            pointer-events: none;
+            z-index: 2;
+        }
+        .data-canvas {
+            z-index: 1;
+        }
+
+        .brush-cursor {
+            position: absolute;
+            pointer-events: none;
+            z-index: 10;
+            border-radius: 50%;
+            border: 2px dashed rgba(255, 255, 255, 0.7);
+            transform: translate(-50%, -50%);
+            display: none;
+            transition: width 0.08s, height 0.08s;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+        }
+        .canvas-wrapper:hover .brush-cursor {
+            display: block;
+        }
+        .canvas-wrapper.drawing .brush-cursor {
+            border-color: #ff6b6b;
+            border-style: solid;
+            box-shadow: 0 0 18px rgba(255, 107, 107, 0.5);
+        }
+        .canvas-wrapper.erasing .brush-cursor {
+            border-color: #ffaa00;
+            border-style: solid;
+            box-shadow: 0 0 18px rgba(255, 170, 0, 0.5);
+        }
+        .canvas-wrapper.blurring .brush-cursor {
+            border-color: #b366ff;
+            border-style: solid;
+            box-shadow: 0 0 18px rgba(179, 102, 255, 0.5);
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 16px;
+            align-items: center;
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 14px 18px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .control-group label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text2);
+            white-space: nowrap;
+            letter-spacing: 0.3px;
+        }
+        .control-group input[type="range"] {
+            width: 80px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+        .control-group .val-display {
+            font-size: 0.7rem;
+            color: var(--text2);
+            min-width: 32px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+            font-family: 'SF Mono', 'Consolas', monospace;
+        }
+        .control-group select {
+            font-size: 0.78rem;
+            padding: 6px 8px;
+            border-radius: var(--radius-sm);
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button {
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            cursor: pointer;
+            transition: all var(--transition);
+            white-space: nowrap;
+            letter-spacing: 0.3px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        button:hover {
+            background: #3a3f4a;
+            border-color: #5a5f6a;
+            transform: translateY(-1px);
+        }
+        button:active {
+            transform: scale(0.96);
+            transition: transform 0.05s;
+        }
+        button.accent {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+            font-weight: 700;
+        }
+        button.accent:hover {
+            background: #5ab4ff;
+            border-color: #5ab4ff;
+            box-shadow: 0 4px 16px rgba(77, 166, 255, 0.35);
+        }
+        button.danger {
+            background: transparent;
+            border-color: var(--accent2);
+            color: var(--accent2);
+        }
+        button.danger:hover {
+            background: #ff6b6b18;
+            border-color: #ff6b6b;
+            box-shadow: 0 4px 16px rgba(255, 107, 107, 0.25);
+        }
+        button.toggle-active {
+            background: #ff6b6b22;
+            border-color: var(--accent2);
+            color: var(--accent2);
+            box-shadow: 0 0 12px rgba(255, 107, 107, 0.3);
+        }
+        button.eraser-active {
+            background: #ffaa0022;
+            border-color: #ffaa00;
+            color: #ffaa00;
+            box-shadow: 0 0 12px rgba(255, 170, 0, 0.3);
+        }
+        button.blur-active {
+            background: #b366ff22;
+            border-color: #b366ff;
+            color: #b366ff;
+            box-shadow: 0 0 12px rgba(179, 102, 255, 0.3);
+        }
+        button.soft-edge-active {
+            background: #3cc73c22;
+            border-color: #3cc73c;
+            color: #3cc73c;
+            box-shadow: 0 0 12px rgba(60, 199, 60, 0.3);
+        }
+        button:disabled {
+            opacity: 0.5;
+            pointer-events: none;
+            filter: grayscale(0.3);
+        }
+
+        .divider {
+            width: 1px;
+            height: 24px;
+            background: var(--border);
+            flex-shrink: 0;
+            margin: 0 2px;
+        }
+        .legend-mini {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-shrink: 0;
+            margin-left: auto;
+            font-size: 0.7rem;
+            color: var(--text2);
+        }
+        .legend-mini .swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            border: 1px solid var(--border);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #333840;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            z-index: 100;
+            pointer-events: none;
+            transition: transform 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            letter-spacing: 0.3px;
+        }
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .hidden-control {
+            display: none;
+        }
+
+        @media (max-width: 850px) {
+            .main-content {
+                flex-direction: column;
+            }
+            .canvas-panel {
+                min-width: auto;
+            }
+            .controls {
+                gap: 8px;
+                padding: 10px 12px;
+            }
+            .control-group input[type="range"] {
+                width: 60px;
+            }
+            button {
+                padding: 6px 10px;
+                font-size: 0.72rem;
+            }
+            .legend-mini {
+                margin-left: 0;
+                width: 100%;
+                justify-content: flex-end;
+                margin-top: 4px;
+            }
+            .divider.hide-mobile {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="header">
+            <div class="logo-area">
+                <div class="logo-icon">🌊</div>
+                <h1>Flowmap Painter</h1>
+                <span class="badge">专业版 V3</span>
+            </div>
+            <div style="font-size:0.75rem;color:var(--text2);">
+                拖拽绘制流向 · 软边缘笔刷 · 强力模糊
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="canvas-panel" id="drawPanel">
+                <div class="panel-label">
+                    <span class="dot draw"></span> Flowmap 贴图（绘制区）
+                    <span style="font-size:0.7rem;color:var(--text2);margin-left:auto;">512×512</span>
+                </div>
+                <div class="canvas-wrapper" id="drawWrapper">
+                    <canvas class="data-canvas" id="flowmapCanvas" width="512" height="512"></canvas>
+                    <canvas class="overlay-canvas" id="overlayCanvas" width="512" height="512"></canvas>
+                    <div class="brush-cursor" id="brushCursor"></div>
+                </div>
+            </div>
+
+            <div class="canvas-panel" id="previewPanel">
+                <div class="panel-label">
+                    <span class="dot preview"></span> 粒子流动预览
+                    <span style="font-size:0.7rem;color:var(--text2);margin-left:auto;" id="particleCountLabel">粒子: 1200</span>
+                </div>
+                <div class="canvas-wrapper" style="cursor:default;" id="previewWrapper">
+                    <canvas id="previewCanvas" width="512" height="512"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls" id="controlsBar">
+            <div class="control-group">
+                <button id="btnDraw" class="toggle-active" title="绘制模式 (D键)">✏️ 绘制</button>
+                <button id="btnErase" title="橡皮擦模式 (E键)">🧹 橡皮擦</button>
+                <button id="btnBlur" title="模糊笔刷模式 (B键)">💧 模糊笔刷</button>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <div class="control-group">
+                <button id="btnUndo" title="撤销上一步 (Ctrl+Z)">↩ 撤销</button>
+                <button id="btnToggleTiling" title="开启画布平铺（四方连续）">🔁 平铺</button>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <div class="control-group">
+                <button id="btnToggleSoftEdge" title="切换软边缘模式：指数衰减，过渡更迅速 (M键)">🌿 软边缘</button>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <div class="control-group">
+                <label>笔刷</label>
+                <input type="range" id="brushSize" min="4" max="150" value="22" step="1">
+                <span class="val-display" id="brushSizeVal">22px</span>
+                <label style="margin-left:4px;">硬度</label>
+                <input type="range" id="brushHardness" min="0" max="100" value="25" step="1">
+                <span class="val-display" id="hardnessVal">25%</span>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <div class="control-group">
+                <label>防抖</label>
+                <input type="range" id="antiAliasStrength" min="0" max="100" value="0" step="1">
+                <span class="val-display" id="antiAliasVal">0</span>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <div class="control-group">
+                <label>强度</label>
+                <input type="range" id="strength" min="0" max="1" value="0.85" step="0.05">
+                <span class="val-display" id="strengthVal">0.85</span>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <div class="control-group">
+                <label>粒子速度</label>
+                <input type="range" id="particleSpeed" min="0.3" max="3" value="1.2" step="0.1">
+                <span class="val-display" id="particleSpeedVal">1.2</span>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <div class="control-group">
+                <button id="btnToggleArrows" title="切换箭头叠加 (H键)">🏹 箭头</button>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <div class="control-group">
+                <label for="presetSelect">预设</label>
+                <select id="presetSelect">
+                    <option value="vortex_cw">漩涡 (顺)</option>
+                    <option value="vortex_ccw">漩涡 (逆)</option>
+                    <option value="sink_cw">吸收 (顺)</option>
+                    <option value="sink_ccw">吸收 (逆)</option>
+                    <option value="source_cw">放射 (顺)</option>
+                    <option value="source_ccw">放射 (逆)</option>
+                    <option value="noise">柏林噪波</option>
+                    <option value="fill_right">填充右</option>
+                </select>
+            </div>
+            <div class="control-group hidden-control" id="noiseDensityGroup">
+                <label>噪波密度</label>
+                <input type="range" id="noiseDensity" min="1" max="12" value="4" step="0.5">
+                <span class="val-display" id="noiseDensityVal">4</span>
+            </div>
+            <div class="divider hide-mobile"></div>
+
+            <button id="btnClear" class="danger" title="清除所有绘制">🗑️ 清除</button>
+
+            <div class="control-group">
+                <label for="exportSizeSelect">导出尺寸</label>
+                <select id="exportSizeSelect">
+                    <option value="256">256</option>
+                    <option value="512" selected>512</option>
+                    <option value="1024">1024</option>
+                    <option value="2048">2048</option>
+                </select>
+                <button id="btnDownload" class="accent" title="下载PNG贴图">📥 下载PNG</button>
+            </div>
+
+            <div class="legend-mini">
+                <span>图例:</span>
+                <span class="swatch" style="background:#808080;" title="无流动"></span>
+                <span class="swatch" style="background:#ff8080;" title="→右"></span>
+                <span class="swatch" style="background:#80ff80;" title="↓下"></span>
+                <span class="swatch" style="background:#8080ff;" title="↑上"></span>
+                <span class="swatch" style="background:#00c0c0;" title="←左"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        (function() {
+            // DOM 元素
+            const flowmapCanvas = document.getElementById('flowmapCanvas');
+            const flowmapCtx = flowmapCanvas.getContext('2d', { willReadFrequently: true });
+            const overlayCanvas = document.getElementById('overlayCanvas');
+            const overlayCtx = overlayCanvas.getContext('2d');
+            const previewCanvas = document.getElementById('previewCanvas');
+            const previewCtx = previewCanvas.getContext('2d');
+            const drawWrapper = document.getElementById('drawWrapper');
+            const brushCursor = document.getElementById('brushCursor');
+            const toast = document.getElementById('toast');
+
+            const btnDraw = document.getElementById('btnDraw');
+            const btnErase = document.getElementById('btnErase');
+            const btnBlur = document.getElementById('btnBlur');
+            const btnUndo = document.getElementById('btnUndo');
+            const btnToggleTiling = document.getElementById('btnToggleTiling');
+            const btnToggleSoftEdge = document.getElementById('btnToggleSoftEdge');
+            const btnClear = document.getElementById('btnClear');
+            const btnDownload = document.getElementById('btnDownload');
+            const btnToggleArrows = document.getElementById('btnToggleArrows');
+            const brushSizeInput = document.getElementById('brushSize');
+            const brushSizeVal = document.getElementById('brushSizeVal');
+            const brushHardnessInput = document.getElementById('brushHardness');
+            const hardnessVal = document.getElementById('hardnessVal');
+            const antiAliasInput = document.getElementById('antiAliasStrength');
+            const antiAliasVal = document.getElementById('antiAliasVal');
+            const strengthInput = document.getElementById('strength');
+            const strengthVal = document.getElementById('strengthVal');
+            const particleSpeedInput = document.getElementById('particleSpeed');
+            const particleSpeedVal = document.getElementById('particleSpeedVal');
+            const exportSizeSelect = document.getElementById('exportSizeSelect');
+            const presetSelect = document.getElementById('presetSelect');
+            const noiseDensityGroup = document.getElementById('noiseDensityGroup');
+            const noiseDensityInput = document.getElementById('noiseDensity');
+            const noiseDensityVal = document.getElementById('noiseDensityVal');
+            const particleCountLabel = document.getElementById('particleCountLabel');
+
+            // 状态
+            const CANVAS_SIZE = 512;
+            let brushRadius = 22;
+            let brushHardness = 0.25;
+            let antiAliasStrength = 0;
+            let strength = 0.85;
+            let particleSpeedMultiplier = 1.2;
+            let isDrawing = false;
+            let isEraseMode = false;
+            let isBlurMode = false;
+            let showArrows = true;
+            let isTilingEnabled = false;
+            let softEdgeMode = false;
+            let currentPressure = 0.5;
+            let lastDrawX = 0,
+                lastDrawY = 0;
+            let hasLastDrawPos = false;
+            let smoothX = 0,
+                smoothY = 0;
+            let flowmapImageData = null;
+
+            const MAX_HISTORY = 50;
+            let historyStack = [];
+            let historyIndex = -1;
+
+            const NEUTRAL_R = 128,
+                NEUTRAL_G = 128,
+                NEUTRAL_B = 0,
+                NEUTRAL_A = 255;
+
+            const NUM_PARTICLES = 1200;
+            let particles = [];
+            let particleImageData = null;
+            let animFrameId = null;
+            let lastFrameTime = 0;
+
+            // 历史管理
+            function saveHistory() {
+                if (historyIndex < historyStack.length - 1) {
+                    historyStack = historyStack.slice(0, historyIndex + 1);
+                }
+                const copy = new Uint8ClampedArray(flowmapImageData.data);
+                historyStack.push(copy);
+                if (historyStack.length > MAX_HISTORY) historyStack.shift();
+                else historyIndex++;
+                updateUndoButtonState();
+            }
+
+            function undo() {
+                if (historyIndex <= 0) return;
+                historyIndex--;
+                flowmapImageData.data.set(historyStack[historyIndex]);
+                flowmapCtx.putImageData(flowmapImageData, 0, 0);
+                updateOverlayArrows();
+                updateUndoButtonState();
+                showToast('↩ 已撤销');
+            }
+
+            function updateUndoButtonState() {
+                btnUndo.disabled = historyIndex <= 0;
+            }
+
+            function resetHistory() {
+                historyStack = [];
+                historyIndex = -1;
+                updateUndoButtonState();
+            }
+
+            function createNeutralImageData() {
+                const imgData = flowmapCtx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
+                const data = imgData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = NEUTRAL_R;
+                    data[i + 1] = NEUTRAL_G;
+                    data[i + 2] = NEUTRAL_B;
+                    data[i + 3] = NEUTRAL_A;
+                }
+                return imgData;
+            }
+
+            function initFlowmap() {
+                flowmapImageData = createNeutralImageData();
+                flowmapCtx.putImageData(flowmapImageData, 0, 0);
+                updateOverlayArrows();
+                resetHistory();
+                saveHistory();
+            }
+
+            function initParticles() {
+                particles = [];
+                for (let i = 0; i < NUM_PARTICLES; i++) {
+                    particles.push({
+                        x: Math.random() * CANVAS_SIZE,
+                        y: Math.random() * CANVAS_SIZE,
+                        age: Math.random() * 200,
+                        maxAge: 150 + Math.random() * 350,
+                    });
+                }
+                particleImageData = previewCtx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
+                const pd = particleImageData.data;
+                for (let i = 0; i < pd.length; i += 4) {
+                    pd[i] = 0;
+                    pd[i + 1] = 0;
+                    pd[i + 2] = 0;
+                    pd[i + 3] = 255;
+                }
+                previewCtx.putImageData(particleImageData, 0, 0);
+            }
+
+            function sampleFlowmap(px, py) {
+                const x = Math.max(0, Math.min(CANVAS_SIZE - 1.001, px));
+                const y = Math.max(0, Math.min(CANVAS_SIZE - 1.001, py));
+                const x0 = Math.floor(x),
+                    y0 = Math.floor(y);
+                const x1 = Math.min(x0 + 1, CANVAS_SIZE - 1),
+                    y1 = Math.min(y0 + 1, CANVAS_SIZE - 1);
+                const fx = x - x0,
+                    fy = y - y0;
+                const d = flowmapImageData.data;
+                const idx00 = (y0 * CANVAS_SIZE + x0) * 4;
+                const idx10 = (y0 * CANVAS_SIZE + x1) * 4;
+                const idx01 = (y1 * CANVAS_SIZE + x0) * 4;
+                const idx11 = (y1 * CANVAS_SIZE + x1) * 4;
+                const r00 = d[idx00],
+                    g00 = d[idx00 + 1],
+                    b00 = d[idx00 + 2];
+                const r10 = d[idx10],
+                    g10 = d[idx10 + 1],
+                    b10 = d[idx10 + 2];
+                const r01 = d[idx01],
+                    g01 = d[idx01 + 1],
+                    b01 = d[idx01 + 2];
+                const r11 = d[idx11],
+                    g11 = d[idx11 + 1],
+                    b11 = d[idx11 + 2];
+                const r = (r00 * (1 - fx) + r10 * fx) * (1 - fy) + (r01 * (1 - fx) + r11 * fx) * fy;
+                const g = (g00 * (1 - fx) + g10 * fx) * (1 - fy) + (g01 * (1 - fx) + g11 * fx) * fy;
+                const b = (b00 * (1 - fx) + b10 * fx) * (1 - fy) + (b01 * (1 - fx) + b11 * fx) * fy;
+                const dirX = (r - 128) / 127.5;
+                const dirY = (g - 128) / 127.5;
+                const mag = Math.sqrt(dirX * dirX + dirY * dirY);
+                const strengthVal = b / 255;
+                return {
+                    dirX: mag > 0.001 ? dirX / mag : 0,
+                    dirY: mag > 0.001 ? dirY / mag : 0,
+                    magnitude: Math.min(mag, 1),
+                    strength: strengthVal,
+                };
+            }
+
+            function updateParticles(dt) {
+                const baseSpeed = 80 * particleSpeedMultiplier;
+                const dtClamped = Math.min(dt, 0.1);
+                for (let p of particles) {
+                    const sample = sampleFlowmap(p.x, p.y);
+                    const speed = baseSpeed * sample.magnitude * (0.3 + 0.7 * sample.strength);
+                    p.x += sample.dirX * speed * dtClamped;
+                    p.y += sample.dirY * speed * dtClamped;
+                    p.age += dtClamped * 60;
+                    if (p.x < 0) p.x += CANVAS_SIZE;
+                    if (p.x >= CANVAS_SIZE) p.x -= CANVAS_SIZE;
+                    if (p.y < 0) p.y += CANVAS_SIZE;
+                    if (p.y >= CANVAS_SIZE) p.y -= CANVAS_SIZE;
+                    if (p.age > p.maxAge || isNaN(p.x) || isNaN(p.y)) {
+                        p.x = Math.random() * CANVAS_SIZE;
+                        p.y = Math.random() * CANVAS_SIZE;
+                        p.age = 0;
+                        p.maxAge = 150 + Math.random() * 350;
+                    }
+                }
+            }
+
+            function renderParticles() {
+                const pd = particleImageData.data;
+                const w = CANVAS_SIZE;
+                const decay = 0.88;
+                for (let i = 0; i < pd.length; i += 4) {
+                    pd[i] = Math.round(pd[i] * decay);
+                    pd[i + 1] = Math.round(pd[i + 1] * decay);
+                    pd[i + 2] = Math.round(pd[i + 2] * decay);
+                    pd[i + 3] = 255;
+                }
+                for (let p of particles) {
+                    const px = Math.round(p.x),
+                        py = Math.round(p.y);
+                    if (px < 0 || px >= w || py < 0 || py >= w) continue;
+                    const sample = sampleFlowmap(p.x, p.y);
+                    const brightness = 0.5 + 0.5 * sample.magnitude;
+                    const r = Math.round(80 + 175 * brightness);
+                    const g = Math.round(180 + 75 * brightness);
+                    const b = Math.round(220 + 35 * brightness);
+                    for (let dy = -2; dy <= 2; dy++) {
+                        for (let dx = -2; dx <= 2; dx++) {
+                            const sx = px + dx,
+                                sy = py + dy;
+                            if (sx < 0 || sx >= w || sy < 0 || sy >= w) continue;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            const falloff = Math.exp(-dist * dist / 1.8);
+                            const idx = (sy * w + sx) * 4;
+                            const a = Math.round(255 * falloff);
+                            pd[idx] = Math.min(255, pd[idx] + (r * a) / 255);
+                            pd[idx + 1] = Math.min(255, pd[idx + 1] + (g * a) / 255);
+                            pd[idx + 2] = Math.min(255, pd[idx + 2] + (b * a) / 255);
+                            pd[idx + 3] = 255;
+                        }
+                    }
+                }
+                previewCtx.putImageData(particleImageData, 0, 0);
+            }
+
+            function particleLoop(timestamp) {
+                if (!lastFrameTime) lastFrameTime = timestamp;
+                let dt = (timestamp - lastFrameTime) / 1000;
+                if (dt <= 0) dt = 0.016;
+                lastFrameTime = timestamp;
+                updateParticles(dt);
+                renderParticles();
+                animFrameId = requestAnimationFrame(particleLoop);
+            }
+
+            function startParticleLoop() {
+                if (animFrameId) return;
+                lastFrameTime = performance.now();
+                animFrameId = requestAnimationFrame(particleLoop);
+            }
+
+            function stopParticleLoop() {
+                if (animFrameId) {
+                    cancelAnimationFrame(animFrameId);
+                    animFrameId = null;
+                }
+            }
+
+            function updateOverlayArrows() {
+                overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                if (!showArrows) return;
+                const step = 28;
+                const arrowLen = 10;
+                const d = flowmapImageData.data;
+                overlayCtx.strokeStyle = 'rgba(255,255,255,0.55)';
+                overlayCtx.lineWidth = 1.2;
+                overlayCtx.lineCap = 'round';
+                overlayCtx.fillStyle = 'rgba(255,255,255,0.7)';
+                for (let y = step / 2; y < CANVAS_SIZE; y += step) {
+                    for (let x = step / 2; x < CANVAS_SIZE; x += step) {
+                        const idx = (Math.round(y) * CANVAS_SIZE + Math.round(x)) * 4;
+                        const r = d[idx],
+                            g = d[idx + 1];
+                        const dirX = (r - 128) / 127.5;
+                        const dirY = (g - 128) / 127.5;
+                        const mag = Math.sqrt(dirX * dirX + dirY * dirY);
+                        if (mag < 0.05) continue;
+                        const nx = dirX / mag,
+                            ny = dirY / mag;
+                        const endX = x + nx * arrowLen;
+                        const endY = y + ny * arrowLen;
+                        overlayCtx.beginPath();
+                        overlayCtx.moveTo(x - nx * 3, y - ny * 3);
+                        overlayCtx.lineTo(endX, endY);
+                        overlayCtx.stroke();
+                        const tipSize = 3;
+                        const angle = Math.atan2(ny, nx);
+                        overlayCtx.beginPath();
+                        overlayCtx.moveTo(endX, endY);
+                        overlayCtx.lineTo(endX - tipSize * Math.cos(angle - 2.2), endY - tipSize * Math.sin(angle -
+                            2.2));
+                        overlayCtx.lineTo(endX - tipSize * Math.cos(angle + 2.2), endY - tipSize * Math.sin(angle +
+                            2.2));
+                        overlayCtx.closePath();
+                        overlayCtx.fill();
+                    }
+                }
+            }
+
+            function encodeDirection(dirX, dirY, bValue) {
+                const r = Math.round(Math.max(0, Math.min(255, (dirX + 1) * 127.5)));
+                const g = Math.round(Math.max(0, Math.min(255, (dirY + 1) * 127.5)));
+                const b = Math.round(Math.max(0, Math.min(255, bValue)));
+                return { r, g, b };
+            }
+
+            // 笔刷权重计算（指数衰减软边缘）
+            function calcBrushWeight(dist, radius, innerRadius, hardnessFactor) {
+                if (hardnessFactor >= 0.99) {
+                    return dist <= radius ? 1 : 0;
+                }
+                if (dist <= innerRadius) return 1;
+                const rawT = (dist - innerRadius) / (radius - innerRadius);
+                if (softEdgeMode) {
+                    const k = 5.0;
+                    return Math.exp(-k * rawT);
+                } else {
+                    const t = rawT;
+                    return 1 - t * t * (3 - 2 * t);
+                }
+            }
+
+            function applyBrush(cx, cy, dirX, dirY, bValue, eraseMode = false, blurMode = false) {
+                const d = flowmapImageData.data;
+                const w = CANVAS_SIZE;
+                const radius = brushRadius;
+                const hardnessFactor = Math.min(0.99, brushHardness);
+                const innerRadius = radius * hardnessFactor;
+                const xMin = Math.floor(cx - radius);
+                const xMax = Math.ceil(cx + radius);
+                const yMin = Math.floor(cy - radius);
+                const yMax = Math.ceil(cy + radius);
+
+                let srcData = null;
+                if (blurMode) {
+                    srcData = new Uint8ClampedArray(d);
+                }
+
+                const encoded = blurMode ? null : encodeDirection(dirX, dirY, bValue);
+
+                for (let py = yMin; py <= yMax; py++) {
+                    for (let px = xMin; px <= xMax; px++) {
+                        const dx = px - cx;
+                        const dy = py - cy;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > radius) continue;
+
+                        let weight = calcBrushWeight(dist, radius, innerRadius, hardnessFactor) * strength * currentPressure;
+                        if (weight <= 0) continue;
+
+                        let wrapX = px,
+                            wrapY = py;
+                        if (isTilingEnabled) {
+                            wrapX = ((px % w) + w) % w;
+                            wrapY = ((py % w) + w) % w;
+                        } else {
+                            if (px < 0 || px >= w || py < 0 || py >= w) continue;
+                        }
+                        const idx = (wrapY * w + wrapX) * 4;
+
+                        if (blurMode && srcData) {
+                            // 使用7x7核 + 权重加倍，实现强力模糊
+                            const kernelRadius = 3; // 7x7核
+                            let rSum = 0, gSum = 0, bSum = 0, count = 0;
+                            for (let ky = -kernelRadius; ky <= kernelRadius; ky++) {
+                                for (let kx = -kernelRadius; kx <= kernelRadius; kx++) {
+                                    const sx = Math.min(w - 1, Math.max(0, px + kx));
+                                    const sy = Math.min(w - 1, Math.max(0, py + ky));
+                                    const sidx = (sy * w + sx) * 4;
+                                    rSum += srcData[sidx];
+                                    gSum += srcData[sidx + 1];
+                                    bSum += srcData[sidx + 2];
+                                    count++;
+                                }
+                            }
+                            const blurR = Math.round(rSum / count);
+                            const blurG = Math.round(gSum / count);
+                            const blurB = Math.round(bSum / count);
+                            // 模糊混合强度加倍（钳位到1）
+                            const blurWeight = Math.min(1, weight * 2.0);
+                            d[idx] = Math.round(d[idx] + (blurR - d[idx]) * blurWeight);
+                            d[idx + 1] = Math.round(d[idx + 1] + (blurG - d[idx + 1]) * blurWeight);
+                            d[idx + 2] = Math.round(d[idx + 2] + (blurB - d[idx + 2]) * blurWeight);
+                        } else if (eraseMode) {
+                            d[idx] = Math.round(d[idx] + (NEUTRAL_R - d[idx]) * weight);
+                            d[idx + 1] = Math.round(d[idx + 1] + (NEUTRAL_G - d[idx + 1]) * weight);
+                            d[idx + 2] = Math.round(d[idx + 2] + (NEUTRAL_B - d[idx + 2]) * weight);
+                        } else {
+                            d[idx] = Math.round(d[idx] + (encoded.r - d[idx]) * weight);
+                            d[idx + 1] = Math.round(d[idx + 1] + (encoded.g - d[idx + 1]) * weight);
+                            d[idx + 2] = Math.round(d[idx + 2] + (encoded.b - d[idx + 2]) * weight);
+                        }
+                        d[idx + 3] = 255;
+                    }
+                }
+            }
+
+            function drawStroke(fromX, fromY, toX, toY, eraseMode = false, blurMode = false) {
+                const dx = toX - fromX,
+                    dy = toY - fromY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                let dirX = 0,
+                    dirY = 0,
+                    speed = 0;
+                if (dist > 0.5 && !blurMode) {
+                    dirX = dx / dist;
+                    dirY = dy / dist;
+                    speed = Math.min(dist / 30, 1);
+                }
+                const bValue = (eraseMode || blurMode) ? 0 : Math.round(speed * 255 * strength * currentPressure);
+                const steps = Math.max(1, Math.ceil(dist / (brushRadius * 0.35)));
+                for (let i = 0; i <= steps; i++) {
+                    const t = i / steps;
+                    const ix = fromX + dx * t;
+                    const iy = fromY + dy * t;
+                    applyBrush(ix, iy, dirX, dirY, bValue, eraseMode, blurMode);
+                }
+                flowmapCtx.putImageData(flowmapImageData, 0, 0);
+                updateOverlayArrows();
+            }
+
+            // 预设应用 (保持不变)
+            function applyPreset(type) {
+                saveHistory();
+                const d = flowmapImageData.data;
+                const cx = CANVAS_SIZE / 2,
+                    cy = CANVAS_SIZE / 2;
+
+                for (let py = 0; py < CANVAS_SIZE; py++) {
+                    for (let px = 0; px < CANVAS_SIZE; px++) {
+                        const dx = px - cx,
+                            dy = py - cy;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        let dirX = 0,
+                            dirY = 0,
+                            bVal = 200;
+
+                        if (type === 'fill_right') {
+                            dirX = 1;
+                            dirY = 0;
+                            bVal = 200;
+                        } else if (type === 'vortex_cw' || type === 'vortex_ccw') {
+                            const tangent = type === 'vortex_cw' ? [-dy, dx] : [dy, -dx];
+                            const mag = Math.sqrt(tangent[0] * tangent[0] + tangent[1] * tangent[1]);
+                            if (mag > 0) { dirX = tangent[0] / mag;
+                                dirY = tangent[1] / mag; }
+                            bVal = Math.round(200 * Math.min(dist / 60, 1));
+                        } else if (type.startsWith('sink')) {
+                            const cw = type === 'sink_cw';
+                            const tangent = cw ? [-dy, dx] : [dy, -dx];
+                            const inward = [-dx, -dy];
+                            const tLen = Math.sqrt(tangent[0] * tangent[0] + tangent[1] * tangent[1]);
+                            const iLen = Math.sqrt(inward[0] * inward[0] + inward[1] * inward[1]);
+                            const tNorm = tLen > 0 ? [tangent[0] / tLen, tangent[1] / tLen] : [0, 0];
+                            const iNorm = iLen > 0 ? [inward[0] / iLen, inward[1] / iLen] : [0, 0];
+                            const mix = 0.7;
+                            dirX = tNorm[0] * mix + iNorm[0] * (1 - mix);
+                            dirY = tNorm[1] * mix + iNorm[1] * (1 - mix);
+                            const m = Math.sqrt(dirX * dirX + dirY * dirY);
+                            if (m > 0) { dirX /= m;
+                                dirY /= m; }
+                            bVal = Math.round(200 * Math.min(dist / 80, 1));
+                        } else if (type.startsWith('source')) {
+                            const cw = type === 'source_cw';
+                            const tangent = cw ? [-dy, dx] : [dy, -dx];
+                            const outward = [dx, dy];
+                            const tLen = Math.sqrt(tangent[0] * tangent[0] + tangent[1] * tangent[1]);
+                            const oLen = Math.sqrt(outward[0] * outward[0] + outward[1] * outward[1]);
+                            const tNorm = tLen > 0 ? [tangent[0] / tLen, tangent[1] / tLen] : [0, 0];
+                            const oNorm = oLen > 0 ? [outward[0] / oLen, outward[1] / oLen] : [0, 0];
+                            const mix = 0.7;
+                            dirX = tNorm[0] * mix + oNorm[0] * (1 - mix);
+                            dirY = tNorm[1] * mix + oNorm[1] * (1 - mix);
+                            const m = Math.sqrt(dirX * dirX + dirY * dirY);
+                            if (m > 0) { dirX /= m;
+                                dirY /= m; }
+                            bVal = Math.round(200 * Math.min(dist / 80, 1));
+                        } else if (type === 'noise') {
+                            const density = parseFloat(noiseDensityInput.value);
+                            const freq = density * 2.5;
+                            const u = px / CANVAS_SIZE * freq;
+                            const v = py / CANVAS_SIZE * freq;
+                            const angle = (
+                                Math.sin(u * 4.7 + v * 2.3) * Math.cos(v * 3.9 - u * 1.8) * 1.2 +
+                                Math.sin(u * 7.2 - v * 3.1) * 0.8 +
+                                Math.cos(u * 2.6 + v * 6.5) * 0.9 +
+                                Math.sin((u + v) * 5.5) * 0.7
+                            ) * Math.PI;
+                            dirX = Math.cos(angle);
+                            dirY = Math.sin(angle);
+                            bVal = 150 + Math.round(105 * Math.sin(u * 12 + v * 10));
+                        }
+
+                        const enc = encodeDirection(dirX, dirY, bVal);
+                        const idx = (py * CANVAS_SIZE + px) * 4;
+                        d[idx] = enc.r;
+                        d[idx + 1] = enc.g;
+                        d[idx + 2] = enc.b;
+                        d[idx + 3] = 255;
+                    }
+                }
+                flowmapCtx.putImageData(flowmapImageData, 0, 0);
+                updateOverlayArrows();
+
+                const names = {
+                    vortex_cw: '漩涡 (顺时针)',
+                    vortex_ccw: '漩涡 (逆时针)',
+                    sink_cw: '吸收漩涡 (顺时针)',
+                    sink_ccw: '吸收漩涡 (逆时针)',
+                    source_cw: '放射漩涡 (顺时针)',
+                    source_ccw: '放射漩涡 (逆时针)',
+                    noise: '柏林噪波',
+                    fill_right: '填充右'
+                };
+                showToast(`✨ 已应用预设：${names[type]}`);
+            }
+
+            // 事件处理（含压感）
+            function getCanvasPos(e) {
+                const rect = flowmapCanvas.getBoundingClientRect();
+                return {
+                    x: (e.clientX - rect.left) * CANVAS_SIZE / rect.width,
+                    y: (e.clientY - rect.top) * CANVAS_SIZE / rect.height,
+                };
+            }
+
+            function getTouchPos(touch) {
+                const rect = flowmapCanvas.getBoundingClientRect();
+                return {
+                    x: (touch.clientX - rect.left) * CANVAS_SIZE / rect.width,
+                    y: (touch.clientY - rect.top) * CANVAS_SIZE / rect.height,
+                };
+            }
+
+            function updatePressure(e) {
+                currentPressure = (e.pressure !== undefined && e.pressure > 0) ? e.pressure : 0.5;
+            }
+
+            function updateBrushCursorFromRaw(rawX, rawY) {
+                const rect = flowmapCanvas.getBoundingClientRect();
+                const displayX = (rawX / CANVAS_SIZE) * rect.width;
+                const displayY = (rawY / CANVAS_SIZE) * rect.height;
+                brushCursor.style.left = displayX + 'px';
+                brushCursor.style.top = displayY + 'px';
+                brushCursor.style.width = (brushRadius * 2 / CANVAS_SIZE * rect.width) + 'px';
+                brushCursor.style.height = (brushRadius * 2 / CANVAS_SIZE * rect.height) + 'px';
+            }
+
+            function applySmoothing(rawX, rawY, reset = false) {
+                if (reset || antiAliasStrength <= 0) {
+                    smoothX = rawX;
+                    smoothY = rawY;
+                    return;
+                }
+                const factor = 1 - (antiAliasStrength / 100) * 0.95;
+                smoothX = smoothX + (rawX - smoothX) * factor;
+                smoothY = smoothY + (rawY - smoothY) * factor;
+            }
+
+            function onPointerDown(e) {
+                if (e.button !== undefined && e.button !== 0) return;
+                e.preventDefault();
+                isDrawing = true;
+                updatePressure(e);
+                const rawPos = getCanvasPos(e);
+                applySmoothing(rawPos.x, rawPos.y, true);
+                lastDrawX = smoothX;
+                lastDrawY = smoothY;
+                hasLastDrawPos = true;
+                drawWrapper.classList.add('drawing');
+                if (isEraseMode) drawWrapper.classList.add('erasing');
+                if (isBlurMode) drawWrapper.classList.add('blurring');
+                updateBrushCursorFromRaw(rawPos.x, rawPos.y);
+                brushCursor.style.display = 'block';
+            }
+
+            function onPointerMove(e) {
+                const rawPos = getCanvasPos(e);
+                updateBrushCursorFromRaw(rawPos.x, rawPos.y);
+                if (!isDrawing) return;
+                e.preventDefault();
+                updatePressure(e);
+                applySmoothing(rawPos.x, rawPos.y, false);
+                if (hasLastDrawPos) drawStroke(lastDrawX, lastDrawY, smoothX, smoothY, isEraseMode, isBlurMode);
+                lastDrawX = smoothX;
+                lastDrawY = smoothY;
+            }
+
+            function onPointerUp(e) {
+                if (!isDrawing) return;
+                isDrawing = false;
+                hasLastDrawPos = false;
+                drawWrapper.classList.remove('drawing', 'erasing', 'blurring');
+                brushCursor.style.display = 'none';
+                saveHistory();
+            }
+
+            function onPointerLeave(e) {
+                brushCursor.style.display = 'none';
+                if (isDrawing) {
+                    const rawPos = getCanvasPos(e);
+                    const clampedX = Math.max(0, Math.min(CANVAS_SIZE - 1, rawPos.x));
+                    const clampedY = Math.max(0, Math.min(CANVAS_SIZE - 1, rawPos.y));
+                    updatePressure(e);
+                    applySmoothing(clampedX, clampedY, false);
+                    if (hasLastDrawPos) drawStroke(lastDrawX, lastDrawY, smoothX, smoothY, isEraseMode, isBlurMode);
+                    isDrawing = false;
+                    hasLastDrawPos = false;
+                    drawWrapper.classList.remove('drawing', 'erasing', 'blurring');
+                    saveHistory();
+                }
+            }
+
+            function onPointerEnter(e) {
+                if (!isDrawing) {
+                    const rawPos = getCanvasPos(e);
+                    updateBrushCursorFromRaw(rawPos.x, rawPos.y);
+                    brushCursor.style.display = 'block';
+                }
+            }
+
+            function onTouchStart(e) {
+                if (e.touches.length === 1) {
+                    e.preventDefault();
+                    isDrawing = true;
+                    const touch = e.touches[0];
+                    currentPressure = touch.force !== undefined ? touch.force : 0.5;
+                    const rawPos = getTouchPos(touch);
+                    applySmoothing(rawPos.x, rawPos.y, true);
+                    lastDrawX = smoothX;
+                    lastDrawY = smoothY;
+                    hasLastDrawPos = true;
+                    drawWrapper.classList.add('drawing');
+                    if (isEraseMode) drawWrapper.classList.add('erasing');
+                    if (isBlurMode) drawWrapper.classList.add('blurring');
+                    updateBrushCursorFromRaw(rawPos.x, rawPos.y);
+                    brushCursor.style.display = 'block';
+                }
+            }
+
+            function onTouchMove(e) {
+                if (!isDrawing || e.touches.length !== 1) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                currentPressure = touch.force !== undefined ? touch.force : 0.5;
+                const rawPos = getTouchPos(touch);
+                updateBrushCursorFromRaw(rawPos.x, rawPos.y);
+                applySmoothing(rawPos.x, rawPos.y, false);
+                if (hasLastDrawPos) drawStroke(lastDrawX, lastDrawY, smoothX, smoothY, isEraseMode, isBlurMode);
+                lastDrawX = smoothX;
+                lastDrawY = smoothY;
+            }
+
+            function onTouchEnd(e) {
+                isDrawing = false;
+                hasLastDrawPos = false;
+                drawWrapper.classList.remove('drawing', 'erasing', 'blurring');
+                brushCursor.style.display = 'none';
+                saveHistory();
+            }
+
+            // 模式切换
+            function clearAllModeButtons() {
+                btnDraw.classList.remove('toggle-active');
+                btnErase.classList.remove('eraser-active', 'toggle-active');
+                btnBlur.classList.remove('blur-active', 'toggle-active');
+                drawWrapper.classList.remove('erasing', 'blurring');
+            }
+
+            function setDrawMode() {
+                clearAllModeButtons();
+                isEraseMode = false;
+                isBlurMode = false;
+                btnDraw.classList.add('toggle-active');
+                showToast('✏️ 绘制模式');
+            }
+
+            function setEraseMode() {
+                clearAllModeButtons();
+                isEraseMode = true;
+                isBlurMode = false;
+                btnErase.classList.add('eraser-active', 'toggle-active');
+                drawWrapper.classList.add('erasing');
+                showToast('🧹 橡皮擦模式');
+            }
+
+            function setBlurMode() {
+                clearAllModeButtons();
+                isBlurMode = true;
+                isEraseMode = false;
+                btnBlur.classList.add('blur-active', 'toggle-active');
+                drawWrapper.classList.add('blurring');
+                showToast('💧 模糊笔刷模式 (7x7强力模糊)');
+            }
+
+            btnDraw.addEventListener('click', setDrawMode);
+            btnErase.addEventListener('click', setEraseMode);
+            btnBlur.addEventListener('click', setBlurMode);
+            btnUndo.addEventListener('click', undo);
+
+            btnToggleTiling.addEventListener('click', () => {
+                isTilingEnabled = !isTilingEnabled;
+                btnToggleTiling.classList.toggle('toggle-active', isTilingEnabled);
+                showToast(isTilingEnabled ? '🔁 平铺模式：开启（四方连续）' : '🔁 平铺模式：关闭');
+            });
+
+            btnToggleSoftEdge.addEventListener('click', () => {
+                softEdgeMode = !softEdgeMode;
+                btnToggleSoftEdge.textContent = softEdgeMode ? '🌿 软边缘 ✓' : '🌿 软边缘';
+                if (softEdgeMode) {
+                    btnToggleSoftEdge.classList.add('soft-edge-active');
+                } else {
+                    btnToggleSoftEdge.classList.remove('soft-edge-active');
+                }
+                showToast(softEdgeMode ? '软边缘模式：指数衰减，过渡更迅速' : '正常模式：线性笔刷过渡');
+            });
+
+            btnClear.addEventListener('click', () => {
+                saveHistory();
+                flowmapImageData = createNeutralImageData();
+                flowmapCtx.putImageData(flowmapImageData, 0, 0);
+                updateOverlayArrows();
+                initParticles();
+                showToast('✅ 画布已清除');
+            });
+
+            btnDownload.addEventListener('click', () => {
+                const targetSize = parseInt(exportSizeSelect.value, 10);
+                const sourceCanvas = document.createElement('canvas');
+                sourceCanvas.width = CANVAS_SIZE;
+                sourceCanvas.height = CANVAS_SIZE;
+                sourceCanvas.getContext('2d').putImageData(flowmapImageData, 0, 0);
+                const exportCanvas = document.createElement('canvas');
+                exportCanvas.width = targetSize;
+                exportCanvas.height = targetSize;
+                exportCanvas.getContext('2d').drawImage(sourceCanvas, 0, 0, targetSize, targetSize);
+                exportCanvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `flowmap_${targetSize}x${targetSize}_${Date.now()}.png`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showToast(`📥 已导出 ${targetSize}×${targetSize} Flowmap贴图`);
+                }, 'image/png');
+            });
+
+            btnToggleArrows.addEventListener('click', () => {
+                showArrows = !showArrows;
+                btnToggleArrows.classList.toggle('toggle-active', showArrows);
+                if (showArrows) updateOverlayArrows();
+                else overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            });
+            btnToggleArrows.classList.add('toggle-active');
+
+            presetSelect.addEventListener('change', () => {
+                const type = presetSelect.value;
+                if (type === 'noise') {
+                    noiseDensityGroup.classList.remove('hidden-control');
+                } else {
+                    noiseDensityGroup.classList.add('hidden-control');
+                }
+                applyPreset(type);
+            });
+
+            noiseDensityInput.addEventListener('input', () => {
+                noiseDensityVal.textContent = noiseDensityInput.value;
+                if (presetSelect.value === 'noise') {
+                    applyPreset('noise');
+                }
+            });
+
+            brushSizeInput.addEventListener('input', () => {
+                brushRadius = parseInt(brushSizeInput.value, 10);
+                brushSizeVal.textContent = brushRadius + 'px';
+            });
+            brushHardnessInput.addEventListener('input', () => {
+                brushHardness = parseInt(brushHardnessInput.value, 10) / 100;
+                hardnessVal.textContent = Math.round(brushHardness * 100) + '%';
+            });
+            antiAliasInput.addEventListener('input', () => {
+                antiAliasStrength = parseInt(antiAliasInput.value, 10);
+                antiAliasVal.textContent = antiAliasStrength;
+            });
+            strengthInput.addEventListener('input', () => {
+                strength = parseFloat(strengthInput.value);
+                strengthVal.textContent = strength.toFixed(2);
+            });
+            particleSpeedInput.addEventListener('input', () => {
+                particleSpeedMultiplier = parseFloat(particleSpeedInput.value);
+                particleSpeedVal.textContent = particleSpeedMultiplier.toFixed(1);
+            });
+
+            // 键盘快捷键
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'z') {
+                    e.preventDefault();
+                    undo();
+                    return;
+                }
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName ===
+                    'SELECT') return;
+                switch (e.key.toLowerCase()) {
+                    case 'e':
+                        setEraseMode();
+                        break;
+                    case 'd':
+                        setDrawMode();
+                        break;
+                    case 'b':
+                        setBlurMode();
+                        break;
+                    case 'h':
+                        showArrows = !showArrows;
+                        btnToggleArrows.classList.toggle('toggle-active', showArrows);
+                        if (showArrows) updateOverlayArrows();
+                        else overlayCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                        break;
+                    case 't':
+                        isTilingEnabled = !isTilingEnabled;
+                        btnToggleTiling.classList.toggle('toggle-active', isTilingEnabled);
+                        showToast(isTilingEnabled ? '🔁 平铺模式：开启' : '🔁 平铺模式：关闭');
+                        break;
+                    case 'm':
+                        softEdgeMode = !softEdgeMode;
+                        btnToggleSoftEdge.textContent = softEdgeMode ? '🌿 软边缘 ✓' : '🌿 软边缘';
+                        if (softEdgeMode) {
+                            btnToggleSoftEdge.classList.add('soft-edge-active');
+                        } else {
+                            btnToggleSoftEdge.classList.remove('soft-edge-active');
+                        }
+                        showToast(softEdgeMode ? '软边缘模式：指数衰减，过渡更迅速' : '正常模式：线性笔刷过渡');
+                        break;
+                    case '[':
+                        brushRadius = Math.max(4, brushRadius - 4);
+                        brushSizeInput.value = brushRadius;
+                        brushSizeVal.textContent = brushRadius + 'px';
+                        break;
+                    case ']':
+                        brushRadius = Math.min(150, brushRadius + 4);
+                        brushSizeInput.value = brushRadius;
+                        brushSizeVal.textContent = brushRadius + 'px';
+                        break;
+                }
+            });
+
+            let toastTimeout;
+
+            function showToast(msg) {
+                toast.textContent = msg;
+                toast.classList.add('show');
+                clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => toast.classList.remove('show'), 1800);
+            }
+
+            // 绑定指针事件
+            flowmapCanvas.addEventListener('pointerdown', onPointerDown);
+            flowmapCanvas.addEventListener('pointermove', onPointerMove);
+            flowmapCanvas.addEventListener('pointerup', onPointerUp);
+            flowmapCanvas.addEventListener('pointerleave', onPointerLeave);
+            flowmapCanvas.addEventListener('pointerenter', onPointerEnter);
+            flowmapCanvas.addEventListener('pointercancel', onPointerUp);
+            drawWrapper.addEventListener('touchstart', onTouchStart, { passive: false });
+            drawWrapper.addEventListener('touchmove', onTouchMove, { passive: false });
+            drawWrapper.addEventListener('touchend', onTouchEnd);
+            drawWrapper.addEventListener('touchcancel', onTouchEnd);
+            window.addEventListener('pointerup', () => {
+                if (isDrawing) {
+                    isDrawing = false;
+                    hasLastDrawPos = false;
+                    drawWrapper.classList.remove('drawing', 'erasing', 'blurring');
+                    brushCursor.style.display = 'none';
+                    saveHistory();
+                }
+            });
+
+            function init() {
+                initFlowmap();
+                initParticles();
+                startParticleLoop();
+                brushSizeVal.textContent = brushRadius + 'px';
+                hardnessVal.textContent = '25%';
+                antiAliasVal.textContent = '0';
+                strengthVal.textContent = strength.toFixed(2);
+                particleSpeedVal.textContent = particleSpeedMultiplier.toFixed(1);
+                noiseDensityVal.textContent = noiseDensityInput.value;
+                particleCountLabel.textContent = '粒子: ' + NUM_PARTICLES;
+                setDrawMode();
+                updateOverlayArrows();
+                brushCursor.style.width = (brushRadius * 2) + 'px';
+                brushCursor.style.height = (brushRadius * 2) + 'px';
+                updateUndoButtonState();
+                noiseDensityGroup.classList.add('hidden-control');
+                console.log('🌊 Flowmap Painter 专业版 V3 已就绪 (超强模糊 + 笔刷上限150px)');
+            }
+
+            init();
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) stopParticleLoop();
+                else { lastFrameTime = performance.now();
+                    startParticleLoop(); }
+            });
+        })();
+    </script>
+</body>
+</html>

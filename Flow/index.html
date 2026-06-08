@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowmap Canvas - 流向图绘制工具</title>
+<style>
+  :root {
+    --bg: #1c1c1c;
+    --panel: #242424;
+    --surface: #333333;
+    --accent: #e94560;
+    --accent2: #4a4a6a;
+    --text: #d0d0d0;
+    --text2: #999999;
+    --border: #383838;
+    --hover: #3d3d3d;
+    --slider-track: #383838;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    background: var(--panel);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+    flex-shrink: 0;
+  }
+  .header .logo {
+    font-size: 18px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), #ff6b6b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header .sep { flex: 1; }
+  .header button {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .header button:hover { background: var(--hover); border-color: var(--accent); }
+  .header button.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .header button.accent:hover { background: #d13350; }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Left sidebar */
+  .sidebar {
+    width: 240px;
+    background: var(--panel);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .sidebar .section { display: flex; flex-direction: column; gap: 4px; }
+  .sidebar .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text2);
+    letter-spacing: 1px;
+    margin-bottom: 1px;
+  }
+  .sidebar label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .sidebar label span.val {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 12px;
+    min-width: 28px;
+    text-align: right;
+  }
+  .sidebar input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--slider-track);
+    outline: none;
+    cursor: pointer;
+  }
+  .sidebar input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+  .sidebar .toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .toggle {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+  .toggle input { display: none; }
+  .toggle .tgl-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--slider-track);
+    border-radius: 11px;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .toggle .tgl-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    top: 2px;
+    left: 2px;
+    transition: 0.2s;
+  }
+  .toggle input:checked + .tgl-slider { background: var(--accent); }
+  .toggle input:checked + .tgl-slider::before { transform: translateX(18px); }
+
+  .brush-modes { display: flex; gap: 4px; }
+  .brush-modes button {
+    flex: 1;
+    padding: 5px 4px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.15s;
+  }
+  .brush-modes button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .brush-modes button.blur-active { background: #3a7bd5; border-color: #3a7bd5; color: #fff; }
+  .brush-modes button.erase-active { background: #888; border-color: #888; color: #fff; }
+
+  /* Pressure indicator */
+  .pressure-bar-wrap {
+    height: 6px;
+    background: var(--slider-track);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .pressure-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.08s;
+    width: 0%;
+  }
+  .pressure-label {
+    font-size: 10px;
+    color: var(--accent);
+    text-align: center;
+    min-height: 14px;
+  }
+
+  .shortcut-hint {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    line-height: 1.7;
+  }
+  .shortcut-hint kbd {
+    background: var(--surface);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    font-size: 10px;
+  }
+
+  /* Canvas area */
+  .canvas-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: repeating-conic-gradient(#2a2a2a 0% 25%, #222222 0% 50%) 50% / 20px 20px;
+    overflow: hidden;
+  }
+  .canvas-viewport {
+    position: relative;
+  }
+  .canvas-inner { transform-origin: 0 0; }
+  canvas.flow-canvas {
+    display: block;
+    cursor: crosshair;
+    image-rendering: pixelated;
+  }
+  canvas.viz-overlay, canvas.brush-overlay, canvas.preview-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    display: block;
+  }
+  canvas.preview-overlay { opacity: 0.85; }
+
+  /* Bottom control bar — fixed at center-bottom of canvas area */
+  .canvas-ctrl-bar {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,0,0,0.75);
+    padding: 5px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.12);
+    z-index: 10;
+    pointer-events: all;
+  }
+  .canvas-ctrl-bar span {
+    font-size: 11px;
+    color: var(--text2);
+    white-space: nowrap;
+  }
+  .canvas-ctrl-bar select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .canvas-ctrl-bar select:focus { outline: none; border-color: var(--accent); }
+  .canvas-ctrl-bar .ctrl-sep {
+    width: 1px;
+    height: 16px;
+    background: rgba(255,255,255,0.15);
+  }
+  .canvas-ctrl-bar button {
+    width: 26px;
+    height: 26px;
+    background: var(--surface);
+    color: #ccc;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.15s;
+  }
+  .canvas-ctrl-bar button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .canvas-ctrl-bar .zoom-label {
+    color: #bbb;
+    font-size: 11px;
+    min-width: 36px;
+    text-align: center;
+  }
+
+  /* Right preview */
+  .preview-panel {
+    width: 300px;
+    background: var(--panel);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .preview-panel h3 {
+    font-size: 13px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .preview-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    background: #000;
+  }
+  .preview-container canvas { width: 100%; height: 100%; display: block; }
+  .preview-controls { display: flex; flex-direction: column; gap: 4px; }
+  .preview-controls label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text2);
+  }
+  .preview-controls input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .pattern-select { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pattern-select button {
+    padding: 4px 7px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 10px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .pattern-select button.active { background: var(--accent2); border-color: var(--accent2); }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    color: var(--text);
+    padding: 10px 24px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 13px;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 900px) {
+    .main { flex-direction: column; }
+    .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 8px; }
+    .sidebar .section { flex: 1; min-width: 100px; }
+    .preview-panel { width: 100%; flex-direction: row; flex-wrap: wrap; }
+    .preview-container { width: 150px; aspect-ratio: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="logo">Flowmap Canvas</span>
+  <span style="font-size:12px;color:var(--text2)">网页版</span>
+  <span class="sep"></span>
+  <button id="btnImport" title="导入 Flowmap 图片">导入</button>
+  <button id="btnExport" class="accent" title="导出为 PNG">导出 PNG</button>
+  <button id="btnClear" title="清除全部绘制内容">清除</button>
+  <button id="btnReset" title="恢复默认设置">重置</button>
+</div>
+
+<div class="main">
+  <div class="sidebar" id="sidebar">
+    <div class="section">
+      <div class="section-title">笔刷模式</div>
+      <div class="brush-modes" id="brushModes">
+        <button class="active" data-mode="paint">画笔</button>
+        <button data-mode="erase">橡皮</button>
+        <button data-mode="blur">模糊</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">笔刷设置</div>
+      <label>大小 <span class="val" id="valSize">48</span></label>
+      <input type="range" id="brushSize" min="4" max="200" value="48" step="1">
+      <label>强度 <span class="val" id="valStrength">0.80</span></label>
+      <input type="range" id="brushStrength" min="0.05" max="1" value="0.8" step="0.05">
+      <label>硬度 <span class="val" id="valHardness">0.50</span></label>
+      <input type="range" id="brushHardness" min="0" max="1" value="0.5" step="0.05">
+    </div>
+    <div class="section">
+      <div class="section-title">压感设置</div>
+      <div class="toggle-row">
+        <span style="font-size:13px;color:var(--text2)">启用压感</span>
+        <label class="toggle">
+          <input type="checkbox" id="pressureEnabled">
+          <span class="tgl-slider"></span>
+        </label>
+      </div>
+      <label>压感强度 <span class="val" id="valPressureInf">0.70</span></label>
+      <input type="range" id="pressureInfluence" min="0" max="1" value="0.7" step="0.05">
+      <div class="pressure-label" id="pressureLabel"></div>
+      <div class="pressure-bar-wrap">
+        <div class="pressure-bar-fill" id="pressureBar"></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">混合模式</div>
+      <div class="toggle-row">
+        <span style="font-size:13px;color:var(--text2)">覆盖模式</span>
+        <label class="toggle">
+          <input type="checkbox" id="overwriteMode">
+          <span class="tgl-slider"></span>
+        </label>
+      </div>
+      <div style="font-size:10px;color:var(--text2);margin-top:2px;">关=叠加增强 | 开=覆盖替换</div>
+      <div class="toggle-row" style="margin-top:4px;">
+        <span style="font-size:13px;color:var(--text2)">四方连续（无缝）</span>
+        <label class="toggle">
+          <input type="checkbox" id="seamlessMode">
+          <span class="tgl-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span style="font-size:13px;color:var(--text2)">显示方向箭头</span>
+        <label class="toggle">
+          <input type="checkbox" id="showArrows" checked>
+          <span class="tgl-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span style="font-size:13px;color:var(--text2)">显示网格</span>
+        <label class="toggle">
+          <input type="checkbox" id="showGrid">
+          <span class="tgl-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="shortcut-hint">
+      <div style="font-size:11px;font-weight:600;margin-bottom:4px;">快捷键</div>
+      <kbd>B</kbd> 画笔 <kbd>E</kbd> 橡皮 <kbd>F</kbd> 模糊<br>
+      <kbd>[</kbd><kbd>]</kbd> 大小 <kbd>S</kbd> 无缝<br>
+      <kbd>Ctrl+Z</kbd> 撤销 <kbd>滚轮</kbd> 缩放<br>
+      <kbd>中键拖动</kbd> 平移画布
+    </div>
+  </div>
+
+  <div class="canvas-area" id="canvasArea">
+    <div class="canvas-viewport" id="canvasViewport">
+      <div class="canvas-inner" id="canvasInner">
+        <canvas class="flow-canvas" id="flowCanvas"></canvas>
+        <canvas class="preview-overlay" id="previewOverlay" style="display:none;"></canvas>
+        <canvas class="viz-overlay" id="vizOverlay"></canvas>
+        <canvas class="brush-overlay" id="brushOverlay"></canvas>
+      </div>
+    </div>
+    <div class="canvas-ctrl-bar" id="canvasCtrlBar">
+      <span>分辨率:</span>
+      <select id="resolutionSelect">
+        <option value="256">256</option>
+        <option value="512" selected>512</option>
+        <option value="1024">1024</option>
+        <option value="2048">2048</option>
+      </select>
+      <span id="canvasInfo">512×512</span>
+      <div class="ctrl-sep"></div>
+      <button id="zoomOut" title="缩小">−</button>
+      <span class="zoom-label" id="zoomLabel">100%</span>
+      <button id="zoomIn" title="放大">+</button>
+      <button id="zoomFit" title="适应窗口">⊡</button>
+    </div>
+  </div>
+
+  <div class="preview-panel">
+    <h3>实时流动预览</h3>
+    <div class="preview-container" id="previewContainer">
+      <canvas id="previewCanvas"></canvas>
+    </div>
+    <div class="preview-controls">
+      <div class="toggle-row">
+        <span style="font-size:12px;color:var(--text2)">绘制区显示预览</span>
+        <label class="toggle">
+          <input type="checkbox" id="mainPreviewToggle">
+          <span class="tgl-slider"></span>
+        </label>
+      </div>
+      <div class="pattern-select">
+        <button class="active" data-pattern="checker">棋盘格</button>
+        <button data-pattern="noise">噪点</button>
+        <button data-pattern="grid">网格线</button>
+        <button data-pattern="dots">圆点</button>
+        <button data-pattern="custom">自定义</button>
+      </div>
+      <label>流动速度 <span class="val" id="valSpeed">1.0</span></label>
+      <input type="range" id="flowSpeed" min="0.1" max="3" value="1" step="0.1">
+      <label>扭曲强度 <span class="val" id="valDistort">1.00</span></label>
+      <input type="range" id="flowDistort" min="0" max="2" value="1" step="0.05">
+      <label>平铺预览 <span class="val" id="valTile">1</span></label>
+      <input type="range" id="previewTile" min="1" max="4" value="1" step="1">
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// Flowmap Canvas - Web
+// Flowmap encoding: R=X dir, G=Y dir, neutral=(128,128)
+// ============================================================
+
+const NEUTRAL_R = 128;
+const NEUTRAL_G = 128;
+
+// Canvas resolution (can be changed by user)
+let canvasSize = 512;
+
+// DOM
+const flowCanvas = document.getElementById('flowCanvas');
+const vizOverlay = document.getElementById('vizOverlay');
+const brushOverlay = document.getElementById('brushOverlay');
+const previewOverlay = document.getElementById('previewOverlay');
+const previewCanvas = document.getElementById('previewCanvas');
+const canvasViewport = document.getElementById('canvasViewport');
+const canvasInner = document.getElementById('canvasInner');
+const canvasArea = document.getElementById('canvasArea');
+const canvasInfo = document.getElementById('canvasInfo');
+const resolutionSelect = document.getElementById('resolutionSelect');
+const toastEl = document.getElementById('toast');
+
+// State
+let brushSize = 48;
+let brushStrength = 0.8;
+let brushHardness = 0.5;
+let brushMode = 'paint';
+let overwriteMode = false;
+let seamlessMode = false;
+let showArrows = true;
+let showGrid = false;
+let flowSpeed = 1.0;
+let flowDistort = 1.0;
+let previewTile = 1;
+let currentPattern = 'checker';
+let mainPreviewOn = false;
+let isDrawing = false;
+let lastX = 0, lastY = 0;
+let undoStack = [];
+const MAX_UNDO = 30;
+
+// Pressure
+let pressureEnabled = false;
+let pressureInfluence = 0.7;
+let currentPressure = 0;
+let effectiveStrength = 0.8; // brushStrength adjusted by pressure
+
+// Zoom & pan
+let zoomLevel = 1;
+let panX = 0, panY = 0;
+let isPanning = false;
+let panStartX = 0, panStartY = 0;
+
+// Custom pattern
+let customPatternImage = null;
+
+// Canvas contexts (re-initialized on resize)
+let ctx, vctx, octx, pctx;
+
+function setupCanvasContexts() {
+  ctx = flowCanvas.getContext('2d', { willReadFrequently: true });
+  vctx = vizOverlay.getContext('2d');
+  octx = brushOverlay.getContext('2d');
+  pctx = previewOverlay.getContext('2d');
+}
+
+function setCanvasSizes(size) {
+  [flowCanvas, vizOverlay, brushOverlay, previewOverlay].forEach(c => {
+    c.width = size;
+    c.height = size;
+  });
+}
+
+// ---- Flowmap data ----
+function createNeutralData() {
+  const imgData = ctx.createImageData(canvasSize, canvasSize);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = NEUTRAL_R;
+    d[i+1] = NEUTRAL_G;
+    d[i+2] = 0;
+    d[i+3] = 255;
+  }
+  return imgData;
+}
+
+function initFlowmap() {
+  ctx.putImageData(createNeutralData(), 0, 0);
+  undoStack = [];
+  pushUndo();
+  drawVizOverlay();
+  updateAllPreviews();
+}
+
+// ---- Resolution change ----
+function changeResolution(newSize) {
+  if (newSize === canvasSize) return;
+
+  // Save current flowmap data
+  const oldData = ctx.getImageData(0, 0, canvasSize, canvasSize);
+
+  canvasSize = newSize;
+  setCanvasSizes(canvasSize);
+  setupCanvasContexts();
+
+  // Scale old flowmap to new size
+  const offCvs = document.createElement('canvas');
+  offCvs.width = oldData.width;
+  offCvs.height = oldData.height;
+  offCvs.getContext('2d').putImageData(oldData, 0, 0);
+
+  ctx.clearRect(0, 0, canvasSize, canvasSize);
+  ctx.drawImage(offCvs, 0, 0, canvasSize, canvasSize);
+
+  undoStack = [];
+  pushUndo();
+  drawVizOverlay();
+  updateAllPreviews();
+  if (gl) updateFlowmapTexture();
+  mainPreviewPatCvs = null;
+
+  document.getElementById('canvasInfo').textContent = canvasSize + '×' + canvasSize;
+  resolutionSelect.value = String(canvasSize);
+
+  // Re-fit to window
+  zoomFit();
+  showToast('分辨率: ' + canvasSize + '×' + canvasSize);
+}
+
+// ---- Visualization overlay ----
+function drawVizOverlay() {
+  vctx.clearRect(0, 0, canvasSize, canvasSize);
+
+  if (showGrid) {
+    const gs = 32;
+    vctx.strokeStyle = 'rgba(100,100,130,0.35)';
+    vctx.lineWidth = 0.5;
+    for (let y = 0; y <= canvasSize; y += gs) {
+      vctx.beginPath(); vctx.moveTo(0, y); vctx.lineTo(canvasSize, y); vctx.stroke();
+    }
+    for (let x = 0; x <= canvasSize; x += gs) {
+      vctx.beginPath(); vctx.moveTo(x, 0); vctx.lineTo(x, canvasSize); vctx.stroke();
+    }
+  }
+
+  if (showArrows) {
+    const imgData = ctx.getImageData(0, 0, canvasSize, canvasSize);
+    const data = imgData.data;
+    const step = 32;
+
+    for (let gy = step; gy < canvasSize; gy += step) {
+      for (let gx = step; gx < canvasSize; gx += step) {
+        let sx = 0, sy = 0, cnt = 0;
+        const hs = step >> 1;
+        for (let dy = -hs; dy < hs; dy += 4) {
+          for (let dx = -hs; dx < hs; dx += 4) {
+            const px = gx + dx, py = gy + dy;
+            if (px >= 0 && px < canvasSize && py >= 0 && py < canvasSize) {
+              const i = (py * canvasSize + px) * 4;
+              sx += (data[i] - NEUTRAL_R) / 128;
+              sy += (data[i+1] - NEUTRAL_G) / 128;
+              cnt++;
+            }
+          }
+        }
+        if (cnt > 0) {
+          sx /= cnt; sy /= cnt;
+          const mag = Math.sqrt(sx*sx + sy*sy);
+          if (mag > 0.02) {
+            const len = Math.min(mag * 14, 14);
+            const ex = gx + (sx/mag)*len, ey = gy + (sy/mag)*len;
+            const a = Math.min(1, mag*2);
+            vctx.strokeStyle = `rgba(${Math.floor(220*a)},${Math.floor(220*a)},${Math.floor(60*a)},0.7)`;
+            vctx.lineWidth = 1.5;
+            vctx.beginPath(); vctx.moveTo(gx, gy); vctx.lineTo(ex, ey); vctx.stroke();
+            // Proper arrowhead (filled triangle)
+            const ang = Math.atan2(sy/mag, sx/mag);
+            const headLen = Math.min(len * 0.4, 8);
+            const headWidth = headLen * 0.55;
+            const hx1 = ex - headLen * Math.cos(ang) + headWidth * Math.cos(ang + Math.PI/2);
+            const hy1 = ey - headLen * Math.sin(ang) + headWidth * Math.sin(ang + Math.PI/2);
+            const hx2 = ex - headLen * Math.cos(ang) - headWidth * Math.cos(ang + Math.PI/2);
+            const hy2 = ey - headLen * Math.sin(ang) - headWidth * Math.sin(ang + Math.PI/2);
+            vctx.fillStyle = `rgba(${Math.floor(220*a)},${Math.floor(220*a)},${Math.floor(60*a)},0.7)`;
+            vctx.beginPath(); vctx.moveTo(ex, ey); vctx.lineTo(hx1, hy1); vctx.lineTo(hx2, hy2); vctx.closePath(); vctx.fill();
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---- Undo ----
+function pushUndo() {
+  undoStack.push(ctx.getImageData(0, 0, canvasSize, canvasSize));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+}
+
+function undo() {
+  if (undoStack.length > 1) {
+    undoStack.pop();
+    ctx.putImageData(undoStack[undoStack.length-1], 0, 0);
+    drawVizOverlay();
+    updateAllPreviews();
+    showToast('已撤销');
+  }
+}
+
+// ---- Brush drawing ----
+function drawBrush(cx, cy, flowX, flowY) {
+  const imgData = ctx.getImageData(0, 0, canvasSize, canvasSize);
+  const data = imgData.data;
+  const radius = brushSize / 2;
+
+  if (brushMode === 'blur') {
+    applyBlurBrush(data, cx, cy, radius);
+  } else {
+    const isErase = brushMode === 'erase';
+    applyPaintBrush(data, cx, cy, radius, flowX, flowY, isErase);
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+}
+
+function applyPaintBrush(data, cx, cy, radius, flowX, flowY, isErase) {
+  const positions = getBrushPositions(cx, cy, radius);
+
+  for (const pos of positions) {
+    const px0 = Math.max(0, Math.floor(pos.x - radius));
+    const py0 = Math.max(0, Math.floor(pos.y - radius));
+    const px1 = Math.min(canvasSize, Math.ceil(pos.x + radius));
+    const py1 = Math.min(canvasSize, Math.ceil(pos.y + radius));
+
+    for (let py = py0; py < py1; py++) {
+      for (let px = px0; px < px1; px++) {
+        const dx = px - pos.x, dy = py - pos.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > radius) continue;
+
+        const alpha = calcBrushAlpha(dist, radius);
+        const i = (py * canvasSize + px) * 4;
+
+        if (isErase) {
+          data[i]   += (NEUTRAL_R - data[i]) * alpha;
+          data[i+1] += (NEUTRAL_G - data[i+1]) * alpha;
+        } else if (overwriteMode) {
+          data[i]   = data[i] + (flowX - data[i]) * alpha;
+          data[i+1] = data[i+1] + (flowY - data[i+1]) * alpha;
+        } else {
+          data[i]   += (flowX - NEUTRAL_R) * alpha;
+          data[i+1] += (flowY - NEUTRAL_G) * alpha;
+        }
+        data[i]   = Math.max(0, Math.min(255, data[i]));
+        data[i+1] = Math.max(0, Math.min(255, data[i+1]));
+      }
+    }
+  }
+}
+
+function applyBlurBrush(data, cx, cy, radius) {
+  const positions = getBrushPositions(cx, cy, radius);
+
+  for (const pos of positions) {
+    const px0 = Math.max(0, Math.floor(pos.x - radius));
+    const py0 = Math.max(0, Math.floor(pos.y - radius));
+    const px1 = Math.min(canvasSize, Math.ceil(pos.x + radius));
+    const py1 = Math.min(canvasSize, Math.ceil(pos.y + radius));
+
+    const blurMap = new Map();
+    const kernelR = Math.max(2, Math.floor(radius * 0.3));
+
+    for (let py = py0; py < py1; py++) {
+      for (let px = px0; px < px1; px++) {
+        const dx = px - pos.x, dy = py - pos.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > radius) continue;
+
+        let sumR = 0, sumG = 0, sumW = 0;
+        for (let ky = -kernelR; ky <= kernelR; ky++) {
+          for (let kx = -kernelR; kx <= kernelR; kx++) {
+            const sx = px + kx, sy = py + ky;
+            if (sx >= 0 && sx < canvasSize && sy >= 0 && sy < canvasSize) {
+              const kd = Math.sqrt(kx*kx + ky*ky);
+              const kw = Math.exp(-kd*kd / (kernelR*kernelR*0.5));
+              const si = (sy * canvasSize + sx) * 4;
+              sumR += data[si] * kw;
+              sumG += data[si+1] * kw;
+              sumW += kw;
+            }
+          }
+        }
+        const br = sumW > 0 ? sumR / sumW : data[(py*canvasSize+px)*4];
+        const bg = sumW > 0 ? sumG / sumW : data[(py*canvasSize+px)*4+1];
+        blurMap.set(py*canvasSize+px, [br, bg]);
+      }
+    }
+
+    for (const [idx, [br, bg]] of blurMap) {
+      const ppx = idx % canvasSize, ppy = Math.floor(idx / canvasSize);
+      const ddx = ppx - pos.x, ddy = ppy - pos.y;
+      const distB = Math.sqrt(ddx*ddx + ddy*ddy);
+      const alpha = calcBrushAlpha(distB, radius) * brushStrength;
+      data[idx*4]     += (br - data[idx*4]) * alpha;
+      data[idx*4 + 1] += (bg - data[idx*4 + 1]) * alpha;
+      data[idx*4]     = Math.max(0, Math.min(255, data[idx*4]));
+      data[idx*4 + 1] = Math.max(0, Math.min(255, data[idx*4 + 1]));
+    }
+  }
+}
+
+function getBrushPositions(cx, cy, radius) {
+  const positions = [{x: cx, y: cy}];
+  if (seamlessMode) {
+    if (cx - radius < 0) {
+      positions.push({x: cx + canvasSize, y: cy});
+      if (cy - radius < 0) positions.push({x: cx + canvasSize, y: cy + canvasSize});
+      if (cy + radius > canvasSize) positions.push({x: cx + canvasSize, y: cy - canvasSize});
+    }
+    if (cx + radius > canvasSize) {
+      positions.push({x: cx - canvasSize, y: cy});
+      if (cy - radius < 0) positions.push({x: cx - canvasSize, y: cy + canvasSize});
+      if (cy + radius > canvasSize) positions.push({x: cx - canvasSize, y: cy - canvasSize});
+    }
+    if (cy - radius < 0) positions.push({x: cx, y: cy + canvasSize});
+    if (cy + radius > canvasSize) positions.push({x: cx, y: cy - canvasSize});
+  }
+  return positions;
+}
+
+function calcBrushAlpha(dist, radius) {
+  const t = dist / radius;
+  if (t <= brushHardness) return brushStrength;
+  const tt = (t - brushHardness) / (1 - brushHardness);
+  return Math.exp(-tt*tt * 3) * brushStrength;
+}
+
+// ---- Brush cursor ----
+function drawBrushCursor(cx, cy) {
+  octx.clearRect(0, 0, canvasSize, canvasSize);
+  const r = brushSize / 2;
+
+  let color;
+  if (brushMode === 'blur') color = 'rgba(58,123,213,0.7)';
+  else if (brushMode === 'erase') color = 'rgba(255,255,255,0.7)';
+  else color = 'rgba(255,100,100,0.7)';
+
+  octx.beginPath();
+  octx.arc(cx, cy, r, 0, Math.PI*2);
+  octx.strokeStyle = color;
+  octx.lineWidth = 1.5;
+  octx.setLineDash([4, 4]);
+  octx.stroke();
+  octx.setLineDash([]);
+
+  octx.beginPath();
+  octx.arc(cx, cy, 2, 0, Math.PI*2);
+  octx.fillStyle = '#fff';
+  octx.fill();
+
+  if (seamlessMode) {
+    const wraps = [];
+    if (cx - r < 0) wraps.push([cx + canvasSize, cy]);
+    if (cx + r > canvasSize) wraps.push([cx - canvasSize, cy]);
+    if (cy - r < 0) wraps.push([cx, cy + canvasSize]);
+    if (cy + r > canvasSize) wraps.push([cx, cy - canvasSize]);
+    for (const [wx, wy] of wraps) {
+      octx.beginPath();
+      octx.arc(wx, wy, r, 0, Math.PI*2);
+      octx.strokeStyle = 'rgba(100,150,255,0.35)';
+      octx.lineWidth = 1;
+      octx.setLineDash([3, 5]);
+      octx.stroke();
+      octx.setLineDash([]);
+    }
+  }
+}
+
+// ---- Coordinate mapping ----
+function screenToFlowmap(clientX, clientY) {
+  const rect = flowCanvas.getBoundingClientRect();
+  const sx = canvasSize / rect.width;
+  const sy = canvasSize / rect.height;
+  return {
+    x: (clientX - rect.left) * sx,
+    y: (clientY - rect.top) * sy
+  };
+}
+
+function getEventPos(e) {
+  return screenToFlowmap(e.clientX, e.clientY);
+}
+
+function updateEffectiveStrength() {
+  if (pressureEnabled) {
+    const minF = 1 - pressureInfluence;
+    effectiveStrength = brushStrength * (minF + pressureInfluence * currentPressure);
+  } else {
+    effectiveStrength = brushStrength;
+  }
+}
+
+// ---- Pointer Events (unified mouse + touch + stylus) ----
+flowCanvas.addEventListener('pointerdown', e => {
+  if (e.button === 0) {
+    // Left button: draw
+    flowCanvas.setPointerCapture(e.pointerId);
+    isDrawing = true;
+    currentPressure = e.pressure || 0;
+    updateEffectiveStrength();
+    updatePressureUI();
+    const p = getEventPos(e);
+    lastX = p.x; lastY = p.y;
+  } else if (e.button === 1) {
+    // Middle button: pan
+    e.preventDefault();
+    isPanning = true;
+    panStartX = e.clientX - panX;
+    panStartY = e.clientY - panY;
+  }
+});
+
+flowCanvas.addEventListener('pointermove', e => {
+  const p = getEventPos(e);
+  drawBrushCursor(p.x, p.y);
+
+  // Update pressure
+  if (isDrawing) {
+    currentPressure = e.pressure || 0;
+    updateEffectiveStrength();
+    updatePressureUI();
+  }
+
+  if (isDrawing) {
+    const dx = p.x - lastX, dy = p.y - lastY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 0.3) return;
+
+    const savedStrength = brushStrength;
+    brushStrength = effectiveStrength;
+
+    const steps = Math.ceil(dist / 2);
+    for (let s = 1; s <= steps; s++) {
+      const t = s/steps;
+      const ix = lastX + dx*t, iy = lastY + dy*t;
+      if (brushMode === 'paint') {
+        drawBrush(ix, iy, NEUTRAL_R + (dx/dist)*127, NEUTRAL_G + (dy/dist)*127);
+      } else {
+        drawBrush(ix, iy, NEUTRAL_R, NEUTRAL_G);
+      }
+    }
+    brushStrength = savedStrength;
+    lastX = p.x; lastY = p.y;
+    updateAllPreviews();
+  } else if (isPanning) {
+    panX = e.clientX - panStartX;
+    panY = e.clientY - panStartY;
+    applyTransform();
+  }
+});
+
+const endDraw = () => {
+  if (isDrawing) {
+    isDrawing = false;
+    currentPressure = 0;
+    updateEffectiveStrength();
+    updatePressureUI();
+    pushUndo(); // save state after stroke completes
+    drawVizOverlay();
+    updateAllPreviews();
+  }
+};
+flowCanvas.addEventListener('pointerup', e => {
+  flowCanvas.releasePointerCapture(e.pointerId);
+  endDraw();
+  if (isPanning) isPanning = false;
+});
+flowCanvas.addEventListener('pointerleave', () => {
+  octx.clearRect(0, 0, canvasSize, canvasSize);
+  endDraw();
+});
+// Prevent lost capture from leaving stale state
+flowCanvas.addEventListener('lostpointercapture', () => {
+  octx.clearRect(0, 0, canvasSize, canvasSize);
+  endDraw();
+});
+
+function updatePressureUI() {
+  const pct = Math.round(currentPressure * 100);
+  document.getElementById('pressureBar').style.width = pct + '%';
+  if (currentPressure > 0.01) {
+    document.getElementById('pressureLabel').textContent = '压力: ' + pct + '%';
+  } else {
+    document.getElementById('pressureLabel').textContent = '';
+  }
+  document.getElementById('valStrength').textContent = effectiveStrength.toFixed(2);
+}
+
+// Scroll wheel zoom
+canvasViewport.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = canvasViewport.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const oldZoom = zoomLevel;
+  zoomLevel = Math.max(0.1, Math.min(5, zoomLevel * (1 - e.deltaY * 0.001)));
+  const ratio = zoomLevel / oldZoom;
+  panX = mx - ratio * (mx - panX);
+  panY = my - ratio * (my - panY);
+  applyTransform();
+  updateZoomLabel();
+}, {passive: false});
+
+// ---- Zoom & Pan ----
+function applyTransform() {
+  canvasInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+}
+
+function updateZoomLabel() {
+  document.getElementById('zoomLabel').textContent = Math.round(zoomLevel * 100) + '%';
+}
+
+function zoomIn() {
+  zoomLevel = Math.min(5, zoomLevel * 1.25);
+  applyTransform();
+  updateZoomLabel();
+}
+
+function zoomOut() {
+  zoomLevel = Math.max(0.1, zoomLevel / 1.25);
+  applyTransform();
+  updateZoomLabel();
+}
+
+function zoomFit() {
+  const rect = canvasViewport.getBoundingClientRect();
+  const padding = 40;
+  const fitW = (rect.width - padding*2) / canvasSize;
+  const fitH = (rect.height - padding*2) / canvasSize;
+  zoomLevel = Math.min(fitW, fitH, 4);
+  panX = (rect.width - canvasSize*zoomLevel) / 2;
+  panY = (rect.height - canvasSize*zoomLevel) / 2;
+  applyTransform();
+  updateZoomLabel();
+}
+
+function updateCanvasDisplaySize() {
+  // Let canvas fill the viewport, no hard cap
+  [flowCanvas, vizOverlay, brushOverlay, previewOverlay].forEach(c => {
+    c.style.width = canvasSize + 'px';
+    c.style.height = canvasSize + 'px';
+  });
+}
+
+// ---- WebGL preview (right panel) ----
+let gl, previewProg;
+let patternTex, flowmapTex;
+let animId, startTime;
+
+function initWebGL() {
+  const pc = previewCanvas;
+  pc.width = 256; pc.height = 256;
+  gl = pc.getContext('webgl', {preserveDrawingBuffer: true}) ||
+       pc.getContext('experimental-webgl');
+  if (!gl) {
+    document.getElementById('previewContainer').innerHTML =
+      '<div style="color:#999;text-align:center;padding:40px 20px;">WebGL 不可用</div>';
+    return;
+  }
+
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vs, 'attribute vec2 aPos;attribute vec2 aUV;varying vec2 vUV;void main(){gl_Position=vec4(aPos,0.0,1.0);vUV=aUV;}');
+  gl.compileShader(vs);
+
+  const fs = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fs, `
+    precision mediump float;
+    varying vec2 vUV;
+    uniform sampler2D uFlowmap;
+    uniform sampler2D uPattern;
+    uniform float uTime;
+    uniform float uSpeed;
+    uniform float uDistort;
+    uniform float uTile;
+
+    void main() {
+      vec2 uv = fract(vUV * uTile);
+      // Flip flowmap V: canvas row0 → WebGL tex row0 → UV.y=0 bottom
+      // So preview top (vUV.y=1) should read canvas top (row 0) which is at UV.y=0
+      vec2 flowUV = vec2(uv.x, 1.0 - uv.y);
+      vec4 flow = texture2D(uFlowmap, flowUV);
+      vec2 dir = (flow.rg - 0.5) * 2.0;
+      dir.x = -dir.x; // canvas X matches UV U, so negate for correct scroll direction
+
+      float phase = uTime * uSpeed;
+      float p0 = fract(phase);
+      float p1 = fract(phase + 0.5);
+      float blend = abs((0.5 - p0) * 2.0);
+
+      vec4 c0 = texture2D(uPattern, uv + dir * uDistort * p0);
+      vec4 c1 = texture2D(uPattern, uv + dir * uDistort * p1);
+      vec4 col = mix(c0, c1, blend);
+
+      float mag = length(dir);
+      col.rgb *= 1.0 - mag * 0.12;
+
+      gl_FragColor = col;
+    }
+  `);
+  gl.compileShader(fs);
+
+  previewProg = gl.createProgram();
+  gl.attachShader(previewProg, vs);
+  gl.attachShader(previewProg, fs);
+  gl.linkProgram(previewProg);
+
+  const verts = new Float32Array([-1,-1,0,0, 1,-1,1,0, -1,1,0,1, 1,1,1,1]);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+
+  const aPos = gl.getAttribLocation(previewProg, 'aPos');
+  const aUV = gl.getAttribLocation(previewProg, 'aUV');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(aUV);
+  gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 16, 8);
+
+  patternTex = gl.createTexture();
+  updatePatternTexture();
+  flowmapTex = gl.createTexture();
+  updateFlowmapTexture();
+}
+
+function updatePatternTexture() {
+  const sz = 256;
+  const cvs = document.createElement('canvas');
+  cvs.width = sz; cvs.height = sz;
+  const pctx = cvs.getContext('2d');
+
+  if (currentPattern === 'custom' && customPatternImage) {
+    const iw = customPatternImage.width, ih = customPatternImage.height;
+    const scale = Math.min(sz/iw, sz/ih);
+    const dw = iw*scale, dh = ih*scale;
+    pctx.drawImage(customPatternImage, (sz-dw)/2, (sz-dh)/2, dw, dh);
+  } else if (currentPattern === 'checker') {
+    const cs = 16;
+    for (let y = 0; y < sz; y += cs) {
+      for (let x = 0; x < sz; x += cs) {
+        pctx.fillStyle = ((x+y)/cs % 2 === 0) ? '#e4e4e4' : '#808080';
+        pctx.fillRect(x, y, cs, cs);
+      }
+    }
+  } else if (currentPattern === 'noise') {
+    const id = pctx.createImageData(sz, sz);
+    for (let i = 0; i < id.data.length; i += 4) {
+      const v = Math.floor(Math.random()*255);
+      id.data[i] = v; id.data[i+1] = v; id.data[i+2] = v; id.data[i+3] = 255;
+    }
+    pctx.putImageData(id, 0, 0);
+  } else if (currentPattern === 'grid') {
+    pctx.fillStyle = '#3a3a3a';
+    pctx.fillRect(0, 0, sz, sz);
+    pctx.strokeStyle = '#ccc'; pctx.lineWidth = 2;
+    for (let y = 0; y <= sz; y += 20) { pctx.beginPath(); pctx.moveTo(0,y); pctx.lineTo(sz,y); pctx.stroke(); }
+    for (let x = 0; x <= sz; x += 20) { pctx.beginPath(); pctx.moveTo(x,0); pctx.lineTo(x,sz); pctx.stroke(); }
+  } else if (currentPattern === 'dots') {
+    pctx.fillStyle = '#2a2a2a';
+    pctx.fillRect(0, 0, sz, sz);
+    pctx.fillStyle = '#eee';
+    for (let y = 10; y < sz; y += 20) {
+      for (let x = 10; x < sz; x += 20) {
+        pctx.beginPath(); pctx.arc(x, y, 4, 0, Math.PI*2); pctx.fill();
+      }
+    }
+  }
+
+  // Flip pattern vertically: canvas Y-down → WebGL UV Y-up
+  const flipCvs = document.createElement('canvas');
+  flipCvs.width = sz; flipCvs.height = sz;
+  const fctx = flipCvs.getContext('2d');
+  fctx.translate(0, sz);
+  fctx.scale(1, -1);
+  fctx.drawImage(cvs, 0, 0);
+
+  gl.bindTexture(gl.TEXTURE_2D, patternTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, flipCvs);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.generateMipmap(gl.TEXTURE_2D);
+}
+
+function updateFlowmapTexture() {
+  if (!gl) return;
+  gl.bindTexture(gl.TEXTURE_2D, flowmapTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, flowCanvas);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+}
+
+function renderPreview(ts) {
+  if (!gl) { animId = requestAnimationFrame(renderPreview); return; }
+  const t = (ts - startTime) / 1000;
+
+  gl.viewport(0, 0, previewCanvas.width, previewCanvas.height);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(previewProg);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, flowmapTex);
+  gl.uniform1i(gl.getUniformLocation(previewProg, 'uFlowmap'), 0);
+
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, patternTex);
+  gl.uniform1i(gl.getUniformLocation(previewProg, 'uPattern'), 1);
+
+  gl.uniform1f(gl.getUniformLocation(previewProg, 'uTime'), t);
+  gl.uniform1f(gl.getUniformLocation(previewProg, 'uSpeed'), flowSpeed * 0.3);
+  gl.uniform1f(gl.getUniformLocation(previewProg, 'uDistort'), flowDistort * 0.18);
+  gl.uniform1f(gl.getUniformLocation(previewProg, 'uTile'), previewTile);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  if (mainPreviewOn) drawMainPreviewOverlay(t);
+
+  animId = requestAnimationFrame(renderPreview);
+}
+
+// ---- Main canvas preview overlay (low-res render, scaled up) ----
+const MAIN_PREVIEW_RES = 256; // fixed low resolution for performance
+let mainPreviewOffCvs = null;  // offscreen canvas at MAIN_PREVIEW_RES
+let mainPreviewPatCvs = null;  // pattern at MAIN_PREVIEW_RES
+
+function drawMainPreviewOverlay(time) {
+  // Lazily create offscreen canvases
+  if (!mainPreviewOffCvs) {
+    mainPreviewOffCvs = document.createElement('canvas');
+    mainPreviewOffCvs.width = MAIN_PREVIEW_RES;
+    mainPreviewOffCvs.height = MAIN_PREVIEW_RES;
+  }
+  if (!mainPreviewPatCvs) {
+    mainPreviewPatCvs = document.createElement('canvas');
+    mainPreviewPatCvs.width = MAIN_PREVIEW_RES;
+    mainPreviewPatCvs.height = MAIN_PREVIEW_RES;
+    renderMainPatternLowRes();
+  }
+
+  const offCtx = mainPreviewOffCvs.getContext('2d');
+
+  // Sample flowmap at low resolution (downscaled from full canvas)
+  const scaleX = canvasSize / MAIN_PREVIEW_RES;
+  const scaleY = canvasSize / MAIN_PREVIEW_RES;
+  const flowData = ctx.getImageData(0, 0, canvasSize, canvasSize).data;
+  const patData = mainPreviewPatCvs.getContext('2d').getImageData(0, 0, MAIN_PREVIEW_RES, MAIN_PREVIEW_RES).data;
+  const outData = offCtx.createImageData(MAIN_PREVIEW_RES, MAIN_PREVIEW_RES);
+  const out = outData.data;
+
+  const phase = time * flowSpeed * 0.3;
+  const p0 = phase - Math.floor(phase);
+  const p1 = p0 + 0.5 - Math.floor(p0 + 0.5);
+  const blendF = Math.abs((0.5 - p0) * 2);
+  const dScale = flowDistort * 0.18 * MAIN_PREVIEW_RES; // UV→pixel scale
+
+  for (let py = 0; py < MAIN_PREVIEW_RES; py++) {
+    for (let px = 0; px < MAIN_PREVIEW_RES; px++) {
+      // Map low-res pixel to flowmap position
+      const fx = Math.floor(px * scaleX);
+      const fy = Math.floor(py * scaleY);
+      const fi = (fy * canvasSize + fx) * 4;
+      const r = flowData[fi], g = flowData[fi+1];
+
+      // Same direction logic as WebGL shader: dir.x = -(R-0.5)*2, dir.y = (G-0.5)*2
+      const dx = -((r - NEUTRAL_R) / 128) * dScale;
+      const dy = -((g - NEUTRAL_G) / 128) * dScale;
+
+      const u0 = px + dx * p0, v0 = py + dy * p0;
+      const u1 = px + dx * p1, v1 = py + dy * p1;
+      const c0 = samplePat(patData, MAIN_PREVIEW_RES, u0, v0);
+      const c1 = samplePat(patData, MAIN_PREVIEW_RES, u1, v1);
+
+      const oi = (py * MAIN_PREVIEW_RES + px) * 4;
+      out[oi]   = Math.round(c0[0] + (c1[0] - c0[0]) * blendF);
+      out[oi+1] = Math.round(c0[1] + (c1[1] - c0[1]) * blendF);
+      out[oi+2] = Math.round(c0[2] + (c1[2] - c0[2]) * blendF);
+      out[oi+3] = 220;
+    }
+  }
+
+  offCtx.putImageData(outData, 0, 0);
+
+  // Scale up to fill the overlay canvas
+  pctx.clearRect(0, 0, canvasSize, canvasSize);
+  pctx.imageSmoothingEnabled = false;
+  pctx.drawImage(mainPreviewOffCvs, 0, 0, canvasSize, canvasSize);
+}
+
+function samplePat(data, w, u, v) {
+  let x = Math.floor(((u % w) + w) % w);
+  let y = Math.floor(((v % w) + w) % w);
+  x = Math.max(0, Math.min(w-1, x));
+  y = Math.max(0, Math.min(w-1, y));
+  const i = (y * w + x) * 4;
+  return [data[i], data[i+1], data[i+2]];
+}
+
+function renderMainPatternLowRes() {
+  if (!mainPreviewPatCvs) return;
+  const pc = mainPreviewPatCvs.getContext('2d');
+  const sz = MAIN_PREVIEW_RES;
+
+  if (currentPattern === 'custom' && customPatternImage) {
+    const iw = customPatternImage.width, ih = customPatternImage.height;
+    const s = Math.min(sz/iw, sz/ih);
+    pc.drawImage(customPatternImage, (sz-iw*s)/2, (sz-ih*s)/2, iw*s, ih*s);
+  } else if (currentPattern === 'checker') {
+    const cs = 16;
+    for (let y = 0; y < sz; y += cs) {
+      for (let x = 0; x < sz; x += cs) {
+        pc.fillStyle = ((x+y)/cs % 2 === 0) ? '#e4e4e4' : '#808080';
+        pc.fillRect(x, y, cs, cs);
+      }
+    }
+  } else if (currentPattern === 'noise') {
+    const id = pc.createImageData(sz, sz);
+    for (let i = 0; i < id.data.length; i += 4) {
+      const v = Math.floor(Math.random()*255);
+      id.data[i] = v; id.data[i+1] = v; id.data[i+2] = v; id.data[i+3] = 255;
+    }
+    pc.putImageData(id, 0, 0);
+  } else if (currentPattern === 'grid') {
+    pc.fillStyle = '#3a3a3a';
+    pc.fillRect(0, 0, sz, sz);
+    pc.strokeStyle = '#ccc'; pc.lineWidth = 2;
+    for (let y = 0; y <= sz; y += 20) { pc.beginPath(); pc.moveTo(0,y); pc.lineTo(sz,y); pc.stroke(); }
+    for (let x = 0; x <= sz; x += 20) { pc.beginPath(); pc.moveTo(x,0); pc.lineTo(x,sz); pc.stroke(); }
+  } else if (currentPattern === 'dots') {
+    pc.fillStyle = '#2a2a2a';
+    pc.fillRect(0, 0, sz, sz);
+    pc.fillStyle = '#eee';
+    for (let y = 10; y < sz; y += 20) {
+      for (let x = 10; x < sz; x += 20) {
+        pc.beginPath(); pc.arc(x, y, 4, 0, Math.PI*2); pc.fill();
+      }
+    }
+  }
+}
+
+function updateAllPreviews() {
+  if (gl) updateFlowmapTexture();
+  if (mainPreviewOn) {
+    mainPreviewPatCvs = null;
+  }
+}
+
+// ---- Export / Import ----
+function exportPNG() {
+  const expCvs = document.createElement('canvas');
+  expCvs.width = canvasSize; expCvs.height = canvasSize;
+  expCvs.getContext('2d').putImageData(ctx.getImageData(0, 0, canvasSize, canvasSize), 0, 0);
+  const a = document.createElement('a');
+  a.download = 'flowmap.png';
+  a.href = expCvs.toDataURL('image/png');
+  a.click();
+  showToast('已导出 flowmap.png (' + canvasSize + '×' + canvasSize + ')');
+}
+
+function importFlowmap() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvasSize, canvasSize);
+      ctx.drawImage(img, 0, 0, canvasSize, canvasSize);
+      pushUndo();
+      drawVizOverlay();
+      updateAllPreviews();
+      showToast('已导入: ' + file.name);
+    };
+    img.src = URL.createObjectURL(file);
+  };
+  inp.click();
+}
+
+function importCustomPattern() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => {
+      customPatternImage = img;
+      currentPattern = 'custom';
+      updatePatternUI();
+      updatePatternTexture();
+      mainPreviewPatCvs = null;
+      showToast('已导入自定义贴图: ' + file.name);
+    };
+    img.src = URL.createObjectURL(file);
+  };
+  inp.click();
+}
+
+// ---- Toast ----
+let toastTimer;
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1500);
+}
+
+// ---- UI bindings ----
+document.getElementById('btnExport').addEventListener('click', exportPNG);
+document.getElementById('btnImport').addEventListener('click', importFlowmap);
+document.getElementById('btnClear').addEventListener('click', () => {
+  pushUndo();
+  ctx.putImageData(createNeutralData(), 0, 0);
+  drawVizOverlay();
+  updateAllPreviews();
+  showToast('已清除');
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  brushSize = 48; brushStrength = 0.8; brushHardness = 0.5;
+  brushMode = 'paint'; overwriteMode = false;
+  pressureEnabled = false; pressureInfluence = 0.7;
+  currentPressure = 0; updateEffectiveStrength();
+  seamlessMode = false; showArrows = true; showGrid = false;
+  flowSpeed = 1.0; flowDistort = 1.0; previewTile = 1;
+  currentPattern = 'checker'; mainPreviewOn = false;
+  customPatternImage = null;
+  zoomLevel = 1; panX = 0; panY = 0;
+
+  // Reset resolution to 512
+  if (canvasSize !== 512) {
+    canvasSize = 512;
+    setCanvasSizes(canvasSize);
+    setupCanvasContexts();
+    resolutionSelect.value = '512';
+    document.getElementById('canvasInfo').textContent = '512×512';
+  }
+
+  syncUI();
+  ctx.putImageData(createNeutralData(), 0, 0);
+  undoStack = [];
+  pushUndo();
+  drawVizOverlay();
+  updateAllPreviews();
+  updatePatternTexture();
+  mainPreviewPatCvs = null;
+  previewOverlay.style.display = 'none';
+  applyTransform();
+  updateZoomLabel();
+  zoomFit();
+  showToast('已重置');
+});
+
+function syncUI() {
+  document.getElementById('brushSize').value = brushSize;
+  document.getElementById('valSize').textContent = brushSize;
+  document.getElementById('brushStrength').value = brushStrength;
+  updateEffectiveStrength();
+  document.getElementById('valStrength').textContent = effectiveStrength.toFixed(2);
+  document.getElementById('brushHardness').value = brushHardness;
+  document.getElementById('valHardness').textContent = brushHardness.toFixed(2);
+  document.getElementById('seamlessMode').checked = seamlessMode;
+  document.getElementById('pressureEnabled').checked = pressureEnabled;
+  document.getElementById('pressureInfluence').value = pressureInfluence;
+  document.getElementById('valPressureInf').textContent = pressureInfluence.toFixed(2);
+
+  document.getElementById('overwriteMode').checked = overwriteMode;
+  document.getElementById('showArrows').checked = showArrows;
+  document.getElementById('showGrid').checked = showGrid;
+  document.getElementById('mainPreviewToggle').checked = mainPreviewOn;
+  previewOverlay.style.display = mainPreviewOn ? 'block' : 'none';
+  document.getElementById('flowSpeed').value = flowSpeed;
+  document.getElementById('valSpeed').textContent = flowSpeed.toFixed(1);
+  document.getElementById('flowDistort').value = flowDistort;
+  document.getElementById('valDistort').textContent = flowDistort.toFixed(2);
+  document.getElementById('previewTile').value = previewTile;
+  document.getElementById('valTile').textContent = previewTile;
+  resolutionSelect.value = String(canvasSize);
+  document.getElementById('canvasInfo').textContent = canvasSize + '×' + canvasSize;
+  updateBrushModeUI();
+  updatePatternUI();
+}
+
+function updateBrushModeUI() {
+  document.querySelectorAll('#brushModes button').forEach(b => {
+    b.classList.remove('active', 'erase-active', 'blur-active');
+    if (b.dataset.mode === brushMode) {
+      if (brushMode === 'erase') b.classList.add('erase-active');
+      else if (brushMode === 'blur') b.classList.add('blur-active');
+      else b.classList.add('active');
+    }
+  });
+}
+
+function updatePatternUI() {
+  document.querySelectorAll('.pattern-select button').forEach(b =>
+    b.classList.toggle('active', b.dataset.pattern === currentPattern));
+}
+
+// Brush mode buttons
+document.querySelectorAll('#brushModes button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    brushMode = btn.dataset.mode;
+    updateBrushModeUI();
+    const names = {paint: '画笔模式', erase: '橡皮模式', blur: '模糊笔刷'};
+    showToast(names[brushMode]);
+  });
+});
+
+// Sliders
+document.getElementById('brushSize').addEventListener('input', e => {
+  brushSize = +e.target.value;
+  document.getElementById('valSize').textContent = brushSize;
+});
+document.getElementById('brushStrength').addEventListener('input', e => {
+  brushStrength = +e.target.value;
+  updateEffectiveStrength();
+  document.getElementById('valStrength').textContent = effectiveStrength.toFixed(2);
+});
+document.getElementById('brushHardness').addEventListener('input', e => {
+  brushHardness = +e.target.value;
+  document.getElementById('valHardness').textContent = brushHardness.toFixed(2);
+});
+document.getElementById('pressureEnabled').addEventListener('change', e => {
+  pressureEnabled = e.target.checked;
+  updateEffectiveStrength();
+  updatePressureUI();
+  document.getElementById('valStrength').textContent = effectiveStrength.toFixed(2);
+  showToast(pressureEnabled ? '压感: 开' : '压感: 关');
+});
+document.getElementById('pressureInfluence').addEventListener('input', e => {
+  pressureInfluence = +e.target.value;
+  document.getElementById('valPressureInf').textContent = pressureInfluence.toFixed(2);
+  updateEffectiveStrength();
+  document.getElementById('valStrength').textContent = effectiveStrength.toFixed(2);
+});
+document.getElementById('seamlessMode').addEventListener('change', e => {
+  seamlessMode = e.target.checked;
+
+});
+document.getElementById('overwriteMode').addEventListener('change', e => {
+  overwriteMode = e.target.checked;
+  showToast(overwriteMode ? '覆盖模式: 开' : '叠加模式: 开');
+});
+document.getElementById('showArrows').addEventListener('change', e => {
+  showArrows = e.target.checked;
+  drawVizOverlay();
+});
+document.getElementById('showGrid').addEventListener('change', e => {
+  showGrid = e.target.checked;
+  drawVizOverlay();
+});
+document.getElementById('flowSpeed').addEventListener('input', e => {
+  flowSpeed = +e.target.value;
+  document.getElementById('valSpeed').textContent = flowSpeed.toFixed(1);
+});
+document.getElementById('flowDistort').addEventListener('input', e => {
+  flowDistort = +e.target.value;
+  document.getElementById('valDistort').textContent = flowDistort.toFixed(2);
+});
+document.getElementById('previewTile').addEventListener('input', e => {
+  previewTile = +e.target.value;
+  document.getElementById('valTile').textContent = previewTile;
+});
+
+// Main preview toggle
+document.getElementById('mainPreviewToggle').addEventListener('change', e => {
+  mainPreviewOn = e.target.checked;
+  previewOverlay.style.display = mainPreviewOn ? 'block' : 'none';
+  if (mainPreviewOn) {
+    mainPreviewPatCvs = null;
+    showToast('绘制区预览: 开（可继续绘制）');
+  } else {
+    showToast('绘制区预览: 关');
+  }
+});
+
+// Pattern buttons
+document.querySelectorAll('.pattern-select button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.pattern === 'custom') {
+      importCustomPattern();
+    } else {
+      currentPattern = btn.dataset.pattern;
+      updatePatternUI();
+      updatePatternTexture();
+      mainPreviewPatCvs = null;
+    }
+  });
+});
+
+// Resolution select
+resolutionSelect.addEventListener('change', () => {
+  const newSize = parseInt(resolutionSelect.value);
+  changeResolution(newSize);
+});
+
+// Zoom controls
+document.getElementById('zoomIn').addEventListener('click', zoomIn);
+document.getElementById('zoomOut').addEventListener('click', zoomOut);
+document.getElementById('zoomFit').addEventListener('click', zoomFit);
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (e.ctrlKey && k === 'z') { e.preventDefault(); undo(); return; }
+  if (k === 'b') { brushMode = 'paint'; updateBrushModeUI(); showToast('画笔模式'); return; }
+  if (k === 'e') { brushMode = 'erase'; updateBrushModeUI(); showToast('橡皮模式'); return; }
+  if (k === 'f') { brushMode = 'blur'; updateBrushModeUI(); showToast('模糊笔刷'); return; }
+  if (k === 's') {
+    seamlessMode = !seamlessMode;
+    document.getElementById('seamlessMode').checked = seamlessMode;
+  
+    showToast(seamlessMode ? '四方连续: 开' : '四方连续: 关');
+    return;
+  }
+  if (k === '[') { brushSize = Math.max(4, brushSize-4); syncBrushUI(); return; }
+  if (k === ']') { brushSize = Math.min(200, brushSize+4); syncBrushUI(); return; }
+});
+
+function syncBrushUI() {
+  document.getElementById('brushSize').value = brushSize;
+  document.getElementById('valSize').textContent = brushSize;
+}
+
+// Resize
+window.addEventListener('resize', () => updateCanvasDisplaySize());
+
+// ---- Init ----
+function init() {
+  setCanvasSizes(canvasSize);
+  setupCanvasContexts();
+  initFlowmap();
+  initWebGL();
+  updateCanvasDisplaySize();
+  zoomFit();
+  startTime = performance.now();
+  if (gl) animId = requestAnimationFrame(renderPreview);
+  syncUI();
+}
+init();
+</script>
+</body>
+</html>

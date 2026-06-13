@@ -395,6 +395,8 @@
       <input type="range" id="brushStrength" min="0.05" max="1" value="0.8" step="0.05">
       <label>硬度 <span class="val" id="valHardness">0.50</span></label>
       <input type="range" id="brushHardness" min="0" max="1" value="0.5" step="0.05">
+      <label>防抖 <span class="val" id="valStabilizer">0</span></label>
+      <input type="range" id="stabilizer" min="0" max="0.95" value="0" step="0.05">
     </div>
     <div class="section">
       <div class="section-title">压感设置</div>
@@ -555,11 +557,18 @@ let lastX = 0, lastY = 0;
 let undoStack = [];
 const MAX_UNDO = 30;
 
+// Stabilizer
+let stabilizer = 0;
+let smoothX = 0, smoothY = 0;
+
 // Pressure
 let pressureEnabled = false;
 let pressureInfluence = 0.7;
 let currentPressure = 0;
 let effectiveStrength = 0.8; // brushStrength adjusted by pressure
+
+// Float32 accumulation buffers — eliminate 8-bit quantization banding
+let flowR, flowG; // Float32Array, allocated in initFloatBuf()
 
 // Zoom & pan
 let zoomLevel = 1;
@@ -587,21 +596,41 @@ function setCanvasSizes(size) {
   });
 }
 
-// ---- Flowmap data ----
-function createNeutralData() {
-  const imgData = ctx.createImageData(canvasSize, canvasSize);
-  const d = imgData.data;
-  for (let i = 0; i < d.length; i += 4) {
-    d[i] = NEUTRAL_R;
-    d[i+1] = NEUTRAL_G;
-    d[i+2] = 0;
-    d[i+3] = 255;
-  }
-  return imgData;
+// ---- Float32 accumulation buffer ----
+function initFloatBuf() {
+  const len = canvasSize * canvasSize;
+  flowR = new Float32Array(len);
+  flowG = new Float32Array(len);
+  flowR.fill(NEUTRAL_R);
+  flowG.fill(NEUTRAL_G);
 }
 
+function loadFloatFromCanvas() {
+  const imgData = ctx.getImageData(0, 0, canvasSize, canvasSize);
+  const data = imgData.data;
+  for (let i = 0; i < flowR.length; i++) {
+    flowR[i] = data[i * 4];
+    flowG[i] = data[i * 4 + 1];
+  }
+}
+
+function syncCanvas() {
+  const imgData = ctx.createImageData(canvasSize, canvasSize);
+  const d = imgData.data;
+  for (let i = 0; i < flowR.length; i++) {
+    const j = i * 4;
+    d[j]     = Math.max(0, Math.min(255, Math.round(flowR[i])));
+    d[j + 1] = Math.max(0, Math.min(255, Math.round(flowG[i])));
+    d[j + 2] = 0;
+    d[j + 3] = 255;
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// ---- Flowmap data ----
 function initFlowmap() {
-  ctx.putImageData(createNeutralData(), 0, 0);
+  initFloatBuf();
+  syncCanvas();
   undoStack = [];
   pushUndo();
   drawVizOverlay();
@@ -612,21 +641,23 @@ function initFlowmap() {
 function changeResolution(newSize) {
   if (newSize === canvasSize) return;
 
-  // Save current flowmap data
+  // Save old flowmap via canvas
+  syncCanvas();
   const oldData = ctx.getImageData(0, 0, canvasSize, canvasSize);
 
   canvasSize = newSize;
   setCanvasSizes(canvasSize);
   setupCanvasContexts();
+  initFloatBuf();
 
   // Scale old flowmap to new size
   const offCvs = document.createElement('canvas');
   offCvs.width = oldData.width;
   offCvs.height = oldData.height;
   offCvs.getContext('2d').putImageData(oldData, 0, 0);
-
   ctx.clearRect(0, 0, canvasSize, canvasSize);
   ctx.drawImage(offCvs, 0, 0, canvasSize, canvasSize);
+  loadFloatFromCanvas();
 
   undoStack = [];
   pushUndo();
@@ -637,9 +668,7 @@ function changeResolution(newSize) {
 
   document.getElementById('canvasInfo').textContent = canvasSize + '×' + canvasSize;
   resolutionSelect.value = String(canvasSize);
-
-  // Re-fit to window
-  zoomFit();
+  zoomLevel = 1; panX = 0; panY = 0; applyTransform(); updateZoomLabel();
   showToast('分辨率: ' + canvasSize + '×' + canvasSize);
 }
 
@@ -660,8 +689,6 @@ function drawVizOverlay() {
   }
 
   if (showArrows) {
-    const imgData = ctx.getImageData(0, 0, canvasSize, canvasSize);
-    const data = imgData.data;
     const step = 32;
 
     for (let gy = step; gy < canvasSize; gy += step) {
@@ -672,9 +699,9 @@ function drawVizOverlay() {
           for (let dx = -hs; dx < hs; dx += 4) {
             const px = gx + dx, py = gy + dy;
             if (px >= 0 && px < canvasSize && py >= 0 && py < canvasSize) {
-              const i = (py * canvasSize + px) * 4;
-              sx += (data[i] - NEUTRAL_R) / 128;
-              sy += (data[i+1] - NEUTRAL_G) / 128;
+              const fi = py * canvasSize + px;
+              sx += (flowR[fi] - NEUTRAL_R) / 128;
+              sy += (flowG[fi] - NEUTRAL_G) / 128;
               cnt++;
             }
           }
@@ -708,6 +735,7 @@ function drawVizOverlay() {
 
 // ---- Undo ----
 function pushUndo() {
+  syncCanvas();
   undoStack.push(ctx.getImageData(0, 0, canvasSize, canvasSize));
   if (undoStack.length > MAX_UNDO) undoStack.shift();
 }
@@ -716,29 +744,25 @@ function undo() {
   if (undoStack.length > 1) {
     undoStack.pop();
     ctx.putImageData(undoStack[undoStack.length-1], 0, 0);
+    loadFloatFromCanvas();
     drawVizOverlay();
     updateAllPreviews();
     showToast('已撤销');
   }
 }
 
-// ---- Brush drawing ----
+// ---- Brush drawing (operates on Float32 buffer, no quantization) ----
 function drawBrush(cx, cy, flowX, flowY) {
-  const imgData = ctx.getImageData(0, 0, canvasSize, canvasSize);
-  const data = imgData.data;
   const radius = brushSize / 2;
-
   if (brushMode === 'blur') {
-    applyBlurBrush(data, cx, cy, radius);
+    applyBlurBrush(cx, cy, radius);
   } else {
-    const isErase = brushMode === 'erase';
-    applyPaintBrush(data, cx, cy, radius, flowX, flowY, isErase);
+    applyPaintBrush(cx, cy, radius, flowX, flowY);
   }
-
-  ctx.putImageData(imgData, 0, 0);
 }
 
-function applyPaintBrush(data, cx, cy, radius, flowX, flowY, isErase) {
+function applyPaintBrush(cx, cy, radius, flowX, flowY) {
+  const isErase = brushMode === 'erase';
   const positions = getBrushPositions(cx, cy, radius);
 
   for (const pos of positions) {
@@ -754,74 +778,127 @@ function applyPaintBrush(data, cx, cy, radius, flowX, flowY, isErase) {
         if (dist > radius) continue;
 
         const alpha = calcBrushAlpha(dist, radius);
-        const i = (py * canvasSize + px) * 4;
+        const idx = py * canvasSize + px;
 
         if (isErase) {
-          data[i]   += (NEUTRAL_R - data[i]) * alpha;
-          data[i+1] += (NEUTRAL_G - data[i+1]) * alpha;
+          // Float buffer: plain lerp toward neutral, no quantization artifacts
+          flowR[idx] += (NEUTRAL_R - flowR[idx]) * alpha;
+          flowG[idx] += (NEUTRAL_G - flowG[idx]) * alpha;
         } else if (overwriteMode) {
-          data[i]   = data[i] + (flowX - data[i]) * alpha;
-          data[i+1] = data[i+1] + (flowY - data[i+1]) * alpha;
+          flowR[idx] += (flowX - flowR[idx]) * alpha;
+          flowG[idx] += (flowY - flowG[idx]) * alpha;
         } else {
-          data[i]   += (flowX - NEUTRAL_R) * alpha;
-          data[i+1] += (flowY - NEUTRAL_G) * alpha;
+          flowR[idx] += (flowX - NEUTRAL_R) * alpha;
+          flowG[idx] += (flowY - NEUTRAL_G) * alpha;
         }
-        data[i]   = Math.max(0, Math.min(255, data[i]));
-        data[i+1] = Math.max(0, Math.min(255, data[i+1]));
+        flowR[idx] = Math.max(0, Math.min(255, flowR[idx]));
+        flowG[idx] = Math.max(0, Math.min(255, flowG[idx]));
       }
     }
   }
+
+  // Sync only the affected region to canvas
+  const r = Math.ceil(radius);
+  const sx0 = Math.max(0, Math.floor(cx - r) - 2);
+  const sy0 = Math.max(0, Math.floor(cy - r) - 2);
+  const sx1 = Math.min(canvasSize, Math.ceil(cx + r) + 2);
+  const sy1 = Math.min(canvasSize, Math.ceil(cy + r) + 2);
+  const w = sx1 - sx0, h = sy1 - sy0;
+  const imgData = ctx.createImageData(w, h);
+  const d = imgData.data;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const fi = (sy0 + y) * canvasSize + (sx0 + x);
+      const di = (y * w + x) * 4;
+      d[di]     = Math.round(flowR[fi]);
+      d[di + 1] = Math.round(flowG[fi]);
+      d[di + 2] = 0;
+      d[di + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, sx0, sy0);
 }
 
-function applyBlurBrush(data, cx, cy, radius) {
+function applyBlurBrush(cx, cy, radius) {
   const positions = getBrushPositions(cx, cy, radius);
+  const kernelSize = 5;
 
   for (const pos of positions) {
     const px0 = Math.max(0, Math.floor(pos.x - radius));
     const py0 = Math.max(0, Math.floor(pos.y - radius));
     const px1 = Math.min(canvasSize, Math.ceil(pos.x + radius));
     const py1 = Math.min(canvasSize, Math.ceil(pos.y + radius));
+    const w = px1 - px0, h = py1 - py0;
+    if (w <= 0 || h <= 0) continue;
 
-    const blurMap = new Map();
-    const kernelR = Math.max(2, Math.floor(radius * 0.3));
-
-    for (let py = py0; py < py1; py++) {
-      for (let px = px0; px < px1; px++) {
-        const dx = px - pos.x, dy = py - pos.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist > radius) continue;
-
-        let sumR = 0, sumG = 0, sumW = 0;
-        for (let ky = -kernelR; ky <= kernelR; ky++) {
-          for (let kx = -kernelR; kx <= kernelR; kx++) {
-            const sx = px + kx, sy = py + ky;
-            if (sx >= 0 && sx < canvasSize && sy >= 0 && sy < canvasSize) {
-              const kd = Math.sqrt(kx*kx + ky*ky);
-              const kw = Math.exp(-kd*kd / (kernelR*kernelR*0.5));
-              const si = (sy * canvasSize + sx) * 4;
-              sumR += data[si] * kw;
-              sumG += data[si+1] * kw;
-              sumW += kw;
-            }
-          }
-        }
-        const br = sumW > 0 ? sumR / sumW : data[(py*canvasSize+px)*4];
-        const bg = sumW > 0 ? sumG / sumW : data[(py*canvasSize+px)*4+1];
-        blurMap.set(py*canvasSize+px, [br, bg]);
+    const len = w * h;
+    const tmpR = new Float32Array(len);
+    const tmpG = new Float32Array(len);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const fi = (py0 + y) * canvasSize + (px0 + x);
+        const di = y * w + x;
+        tmpR[di] = flowR[fi];
+        tmpG[di] = flowG[fi];
       }
     }
 
-    for (const [idx, [br, bg]] of blurMap) {
-      const ppx = idx % canvasSize, ppy = Math.floor(idx / canvasSize);
-      const ddx = ppx - pos.x, ddy = ppy - pos.y;
-      const distB = Math.sqrt(ddx*ddx + ddy*ddy);
-      const alpha = calcBrushAlpha(distB, radius) * brushStrength;
-      data[idx*4]     += (br - data[idx*4]) * alpha;
-      data[idx*4 + 1] += (bg - data[idx*4 + 1]) * alpha;
-      data[idx*4]     = Math.max(0, Math.min(255, data[idx*4]));
-      data[idx*4 + 1] = Math.max(0, Math.min(255, data[idx*4 + 1]));
+    const halfK = Math.floor(kernelSize / 2);
+    const blurH = new Float32Array(len);
+
+    // Horizontal pass
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let sr = 0, sg = 0, cnt = 0;
+        for (let kx = -halfK; kx <= halfK; kx++) {
+          const sx = x + kx;
+          if (sx >= 0 && sx < w) { const di = y * w + sx; sr += tmpR[di]; sg += tmpG[di]; cnt++; }
+        }
+        blurH[y * w + x] = sr / cnt;
+        tmpG[y * w + x] = sg / cnt; // reuse tmpG for G horizontal result
+      }
+    }
+
+    // Vertical pass + blend
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let sr = 0, sg = 0, cnt = 0;
+        for (let ky = -halfK; ky <= halfK; ky++) {
+          const sy = y + ky;
+          if (sy >= 0 && sy < h) { const di = sy * w + x; sr += blurH[di]; sg += tmpG[di]; cnt++; }
+        }
+        const bx = px0 + x, by = py0 + y;
+        const ddx = bx - pos.x, ddy = by - pos.y;
+        const dist = Math.sqrt(ddx*ddx + ddy*ddy);
+        if (dist > radius) continue;
+        const alpha = calcBrushAlpha(dist, radius) * brushStrength;
+        const fi = by * canvasSize + bx;
+        flowR[fi] += (sr / cnt - flowR[fi]) * alpha;
+        flowG[fi] += (sg / cnt - flowG[fi]) * alpha;
+      }
     }
   }
+
+  // Sync affected region
+  const r = Math.ceil(radius);
+  const sx0 = Math.max(0, Math.floor(cx - r) - 2);
+  const sy0 = Math.max(0, Math.floor(cy - r) - 2);
+  const sx1 = Math.min(canvasSize, Math.ceil(cx + r) + 2);
+  const sy1 = Math.min(canvasSize, Math.ceil(cy + r) + 2);
+  const w2 = sx1 - sx0, h2 = sy1 - sy0;
+  const imgData = ctx.createImageData(w2, h2);
+  const d = imgData.data;
+  for (let y = 0; y < h2; y++) {
+    for (let x = 0; x < w2; x++) {
+      const fi = (sy0 + y) * canvasSize + (sx0 + x);
+      const di = (y * w2 + x) * 4;
+      d[di]     = Math.round(flowR[fi]);
+      d[di + 1] = Math.round(flowG[fi]);
+      d[di + 2] = 0;
+      d[di + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, sx0, sy0);
 }
 
 function getBrushPositions(cx, cy, radius) {
@@ -847,7 +924,7 @@ function calcBrushAlpha(dist, radius) {
   const t = dist / radius;
   if (t <= brushHardness) return brushStrength;
   const tt = (t - brushHardness) / (1 - brushHardness);
-  return Math.exp(-tt*tt * 3) * brushStrength;
+  return Math.exp(-tt * tt * 3) * brushStrength;
 }
 
 // ---- Brush cursor ----
@@ -926,6 +1003,7 @@ flowCanvas.addEventListener('pointerdown', e => {
     updatePressureUI();
     const p = getEventPos(e);
     lastX = p.x; lastY = p.y;
+    smoothX = p.x; smoothY = p.y;
   } else if (e.button === 1) {
     // Middle button: pan
     e.preventDefault();
@@ -939,6 +1017,15 @@ flowCanvas.addEventListener('pointermove', e => {
   const p = getEventPos(e);
   drawBrushCursor(p.x, p.y);
 
+  // Apply stabilizer: EWMA smoothing toward raw position
+  if (stabilizer > 0) {
+    const f = 1 - stabilizer;
+    smoothX += (p.x - smoothX) * f;
+    smoothY += (p.y - smoothY) * f;
+  } else {
+    smoothX = p.x; smoothY = p.y;
+  }
+
   // Update pressure
   if (isDrawing) {
     currentPressure = e.pressure || 0;
@@ -947,7 +1034,7 @@ flowCanvas.addEventListener('pointermove', e => {
   }
 
   if (isDrawing) {
-    const dx = p.x - lastX, dy = p.y - lastY;
+    const dx = smoothX - lastX, dy = smoothY - lastY;
     const dist = Math.sqrt(dx*dx + dy*dy);
     if (dist < 0.3) return;
 
@@ -965,7 +1052,7 @@ flowCanvas.addEventListener('pointermove', e => {
       }
     }
     brushStrength = savedStrength;
-    lastX = p.x; lastY = p.y;
+    lastX = smoothX; lastY = smoothY;
     updateAllPreviews();
   } else if (isPanning) {
     panX = e.clientX - panStartX;
@@ -1048,13 +1135,8 @@ function zoomOut() {
 }
 
 function zoomFit() {
-  const rect = canvasViewport.getBoundingClientRect();
-  const padding = 40;
-  const fitW = (rect.width - padding*2) / canvasSize;
-  const fitH = (rect.height - padding*2) / canvasSize;
-  zoomLevel = Math.min(fitW, fitH, 4);
-  panX = (rect.width - canvasSize*zoomLevel) / 2;
-  panY = (rect.height - canvasSize*zoomLevel) / 2;
+  zoomLevel = 1;
+  panX = 0; panY = 0;
   applyTransform();
   updateZoomLabel();
 }
@@ -1266,10 +1348,9 @@ function drawMainPreviewOverlay(time) {
 
   const offCtx = mainPreviewOffCvs.getContext('2d');
 
-  // Sample flowmap at low resolution (downscaled from full canvas)
+  // Sample flowmap from float buffer (no getImageData needed)
   const scaleX = canvasSize / MAIN_PREVIEW_RES;
   const scaleY = canvasSize / MAIN_PREVIEW_RES;
-  const flowData = ctx.getImageData(0, 0, canvasSize, canvasSize).data;
   const patData = mainPreviewPatCvs.getContext('2d').getImageData(0, 0, MAIN_PREVIEW_RES, MAIN_PREVIEW_RES).data;
   const outData = offCtx.createImageData(MAIN_PREVIEW_RES, MAIN_PREVIEW_RES);
   const out = outData.data;
@@ -1285,8 +1366,8 @@ function drawMainPreviewOverlay(time) {
       // Map low-res pixel to flowmap position
       const fx = Math.floor(px * scaleX);
       const fy = Math.floor(py * scaleY);
-      const fi = (fy * canvasSize + fx) * 4;
-      const r = flowData[fi], g = flowData[fi+1];
+      const fi = fy * canvasSize + fx;
+      const r = flowR[fi], g = flowG[fi];
 
       // Same direction logic as WebGL shader: dir.x = -(R-0.5)*2, dir.y = (G-0.5)*2
       const dx = -((r - NEUTRAL_R) / 128) * dScale;
@@ -1365,6 +1446,7 @@ function renderMainPatternLowRes() {
 }
 
 function updateAllPreviews() {
+  syncCanvas();
   if (gl) updateFlowmapTexture();
   if (mainPreviewOn) {
     mainPreviewPatCvs = null;
@@ -1393,6 +1475,7 @@ function importFlowmap() {
     img.onload = () => {
       ctx.clearRect(0, 0, canvasSize, canvasSize);
       ctx.drawImage(img, 0, 0, canvasSize, canvasSize);
+      loadFloatFromCanvas();
       pushUndo();
       drawVizOverlay();
       updateAllPreviews();
@@ -1437,13 +1520,15 @@ document.getElementById('btnExport').addEventListener('click', exportPNG);
 document.getElementById('btnImport').addEventListener('click', importFlowmap);
 document.getElementById('btnClear').addEventListener('click', () => {
   pushUndo();
-  ctx.putImageData(createNeutralData(), 0, 0);
+  initFloatBuf();
+  syncCanvas();
   drawVizOverlay();
   updateAllPreviews();
   showToast('已清除');
 });
 document.getElementById('btnReset').addEventListener('click', () => {
   brushSize = 48; brushStrength = 0.8; brushHardness = 0.5;
+  stabilizer = 0;
   brushMode = 'paint'; overwriteMode = false;
   pressureEnabled = false; pressureInfluence = 0.7;
   currentPressure = 0; updateEffectiveStrength();
@@ -1463,7 +1548,8 @@ document.getElementById('btnReset').addEventListener('click', () => {
   }
 
   syncUI();
-  ctx.putImageData(createNeutralData(), 0, 0);
+  initFloatBuf();
+  syncCanvas();
   undoStack = [];
   pushUndo();
   drawVizOverlay();
@@ -1485,6 +1571,8 @@ function syncUI() {
   document.getElementById('valStrength').textContent = effectiveStrength.toFixed(2);
   document.getElementById('brushHardness').value = brushHardness;
   document.getElementById('valHardness').textContent = brushHardness.toFixed(2);
+  document.getElementById('stabilizer').value = stabilizer;
+  document.getElementById('valStabilizer').textContent = Math.round(stabilizer * 100);
   document.getElementById('seamlessMode').checked = seamlessMode;
   document.getElementById('pressureEnabled').checked = pressureEnabled;
   document.getElementById('pressureInfluence').value = pressureInfluence;
@@ -1546,6 +1634,10 @@ document.getElementById('brushStrength').addEventListener('input', e => {
 document.getElementById('brushHardness').addEventListener('input', e => {
   brushHardness = +e.target.value;
   document.getElementById('valHardness').textContent = brushHardness.toFixed(2);
+});
+document.getElementById('stabilizer').addEventListener('input', e => {
+  stabilizer = +e.target.value;
+  document.getElementById('valStabilizer').textContent = Math.round(stabilizer * 100);
 });
 document.getElementById('pressureEnabled').addEventListener('change', e => {
   pressureEnabled = e.target.checked;

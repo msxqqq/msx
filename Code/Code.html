@@ -187,9 +187,10 @@ function detectGH(){
   var user=host.replace('.github.io','');
   var parts=window.location.pathname.split('/').filter(Boolean);
   var repo=parts[0]||(user+'.github.io');
-  // list/ 目录 = index.html 所在的子目录下的 list/
-  var subdir=parts.slice(1).join('/').replace(/\/?index\.html$/,'');
-  var listDir=subdir?subdir+'/list':'list';
+  // list/ 目录 = 当前 html 所在子目录下的 list/
+  var sub=parts.slice(1);
+  if(sub.length&&/\.html$/i.test(sub[sub.length-1]))sub.pop();
+  var listDir=sub.length?sub.join('/')+'/list':'list';
   return { user:user, repo:repo, branch:'main', listDir:listDir };
 }
 
@@ -203,7 +204,7 @@ async function loadFromGitHub(gh){
   try{ resp=await fetch(api) }
   catch(e){ showMsg('🔌','无法连接 GitHub API'); return }
   if(resp.status===404){
-    showMsg('📂','未找到 list/ 目录','请在仓库根目录创建 <code>list/</code> 文件夹。分支: <code>'+gh.branch+'</code>');
+    showMsg('📂','未找到目录: <code>'+gh.listDir+'/</code>','请确认该路径存在，且分支为 <code>'+gh.branch+'</code>');
     return;
   }
   if(!resp.ok){

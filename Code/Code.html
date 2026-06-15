@@ -187,15 +187,18 @@ function detectGH(){
   var user=host.replace('.github.io','');
   var parts=window.location.pathname.split('/').filter(Boolean);
   var repo=parts[0]||(user+'.github.io');
-  return { user:user, repo:repo, branch:'main' };
+  // list/ 目录 = index.html 所在的子目录下的 list/
+  var subdir=parts.slice(1).join('/').replace(/\/?index\.html$/,'');
+  var listDir=subdir?subdir+'/list':'list';
+  return { user:user, repo:repo, branch:'main', listDir:listDir };
 }
 
 async function loadFromGitHub(gh){
   document.getElementById('subtitle').innerHTML=
-    'GitHub Pages · <code>'+gh.user+'/'+gh.repo+'</code> · 自动读取 <code>list/</code>';
+    'GitHub Pages · <code>'+gh.user+'/'+gh.repo+'</code> · 自动读取 <code>'+gh.listDir+'/</code>';
 
   var api='https://api.github.com/repos/'+encodeURIComponent(gh.user)+'/'+
-    encodeURIComponent(gh.repo)+'/contents/list?ref='+encodeURIComponent(gh.branch);
+    encodeURIComponent(gh.repo)+'/contents/'+gh.listDir+'?ref='+encodeURIComponent(gh.branch);
   var resp;
   try{ resp=await fetch(api) }
   catch(e){ showMsg('🔌','无法连接 GitHub API'); return }

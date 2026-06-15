@@ -1,1 +1,407 @@
-me
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>常用代码列表</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/toml.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --card-bg: #161b22; --border: #30363d;
+    --text: #c9d1d9; --text-secondary: #8b949e; --accent: #58a6ff;
+    --accent-hover: #79c0ff; --success: #3fb950; --radius: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 24px; font-weight: 600; color: #f0f6fc; }
+  header .subtitle { color: var(--text-secondary); font-size: 13px; margin-top: 6px; }
+  header .subtitle code { background: #1c2128; padding: 1px 6px; border-radius: 4px; font-size: 12px; border: 1px solid var(--border); }
+
+  .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card-bg); color: var(--text); cursor: pointer;
+    font-size: 12px; transition: all .15s; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent-hover); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .search-box {
+    flex: 1; min-width: 200px; padding: 7px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--card-bg); color: var(--text);
+    font-size: 13px; outline: none; transition: border-color .15s;
+  }
+  .search-box:focus { border-color: var(--accent); }
+  .search-box::placeholder { color: var(--text-secondary); }
+  .stats { color: var(--text-secondary); font-size: 12px; margin-left: auto; white-space: nowrap; }
+
+  .file-list { display: flex; flex-direction: column; }
+  .file-item {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; margin-bottom: 8px;
+  }
+  .file-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; user-select: none; }
+  .file-icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+  .file-name {
+    flex: 1; font-size: 14px; font-weight: 500;
+    font-family: "JetBrains Mono","Fira Code","Cascadia Code",monospace;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .file-lang { font-size: 11px; padding: 2px 8px; border-radius: 12px; background: #1c2128; color: var(--text-secondary); border: 1px solid var(--border); flex-shrink: 0; }
+  .file-size { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; min-width: 50px; text-align: right; }
+  .file-arrow { transition: transform .2s; color: var(--text-secondary); font-size: 12px; flex-shrink: 0; }
+  .file-item.open .file-arrow { transform: rotate(90deg); }
+  .file-body { display: none; }
+  .file-item.open .file-body { display: block; }
+  .file-actions { display: flex; gap: 8px; padding: 0 16px 10px; }
+  .copy-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: #1c2128; color: var(--text-secondary); cursor: pointer;
+    font-size: 12px; transition: all .15s;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent-hover); }
+  .copy-btn.copied { border-color: var(--success); color: var(--success); }
+  .code-wrapper {
+    position: relative; margin: 0 16px 16px; border-radius: var(--radius);
+    overflow: hidden; border: 1px solid var(--border);
+  }
+  .code-wrapper pre { margin: 0; padding: 16px; overflow-x: auto; max-height: 520px; overflow-y: auto; }
+  .code-wrapper pre code { font-family: "JetBrains Mono","Fira Code","Cascadia Code","Consolas",monospace; font-size: 13px; line-height: 1.6; tab-size: 4; }
+
+  .status-msg { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+  .status-msg .status-icon { font-size: 36px; margin-bottom: 16px; }
+  .status-msg p { font-size: 14px; margin-bottom: 6px; }
+  .status-msg .detail { font-size: 12px; opacity: .7; margin-top: 12px; line-height: 1.6; }
+  .spinner {
+    display: inline-block; width: 28px; height: 28px;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: #238636; color: #fff; padding: 10px 24px;
+    border-radius: var(--radius); font-size: 13px; z-index: 999;
+    pointer-events: none; opacity: 0; transition: opacity .3s;
+  }
+  .toast.show { opacity: 1; }
+  .mode-badge {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 12px;
+    background: #1c2128; border: 1px solid var(--border); color: var(--text-secondary);
+    vertical-align: middle; margin-left: 8px;
+  }
+  @media (max-width: 600px) {
+    body { padding: 12px; }
+    .file-lang, .file-size { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>常用代码列表 <span class="mode-badge" id="modeBadge"></span></h1>
+    <p class="subtitle">自动读取 <code>list/</code> 文件夹中的代码文件</p>
+  </header>
+  <div class="controls">
+    <input type="text" class="search-box" id="search" placeholder="搜索文件名... (Ctrl+K)" disabled>
+    <button class="btn" id="expandAll" disabled>全部展开</button>
+    <button class="btn" id="collapseAll" disabled>全部折叠</button>
+    <span class="stats" id="stats"></span>
+  </div>
+  <div class="file-list" id="fileList">
+    <div class="status-msg">
+      <div class="spinner"></div>
+      <p>正在加载代码列表...</p>
+      <p class="detail" id="loadDetail"></p>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 工具函数
+// ============================================================
+var LANG_MAP = {
+  py: 'python', js: 'javascript', ts: 'typescript', jsx: 'jsx', tsx: 'tsx',
+  json: 'json', xml: 'xml', html: 'html', htm: 'html', css: 'css', scss: 'scss',
+  md: 'markdown', yaml: 'yaml', yml: 'yaml', sql: 'sql',
+  sh: 'bash', bash: 'bash', zsh: 'bash', bat: 'batch', ps1: 'powershell',
+  toml: 'toml', ini: 'ini', cfg: 'ini', conf: 'ini',
+  c: 'c', cpp: 'cpp', h: 'c', java: 'java', go: 'go', rs: 'rust',
+  rb: 'ruby', php: 'php', swift: 'swift', kt: 'kotlin', lua: 'lua',
+  dart: 'dart', vue: 'xml', svelte: 'html', graphql: 'graphql', proto: 'protobuf',
+  dockerfile: 'dockerfile', makefile: 'makefile', env: 'bash', txt: 'plaintext'
+};
+
+var ICONS = { py:'🐍', js:'🟨', ts:'🔷', jsx:'⚛️', tsx:'⚛️', json:'📋', xml:'📄', html:'🌐', css:'🎨', scss:'🎨', md:'📖', yaml:'📝', yml:'📝', sql:'🗄️', sh:'💻', bash:'💻', dockerfile:'🐳', toml:'⚙️', ini:'⚙️', go:'🔵', rs:'🦀', java:'☕', c:'⚡', cpp:'⚡', rb:'💎', php:'🐘', swift:'🦅', kt:'🟣', lua:'🌙', txt:'📄' };
+
+function getExt(name) { return (name.split('.').pop() || 'txt').toLowerCase(); }
+
+function formatSize(b) { return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB'; }
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 2000);
+}
+
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+
+// ============================================================
+// 数据源检测
+// ============================================================
+var FILES_DATA = [];
+var SOURCE = null; // 'github' | 'local'
+
+function status(icon, msg, detail) {
+  var h = detail ? '<p class="detail">' + detail + '</p>' : '';
+  document.getElementById('fileList').innerHTML =
+    '<div class="status-msg"><div class="status-icon">'+icon+'</div><p>'+msg+'</p>'+h+'</div>';
+  document.getElementById('stats').textContent = '';
+}
+
+function enableControls(on) {
+  document.getElementById('search').disabled = !on;
+  document.getElementById('expandAll').disabled = !on;
+  document.getElementById('collapseAll').disabled = !on;
+}
+
+function detectGitHubPages() {
+  var host = window.location.hostname;
+  if (!host.endsWith('.github.io')) return null;
+
+  var user = host.replace('.github.io', '');
+  var parts = window.location.pathname.split('/').filter(Boolean);
+  var repo = parts[0] || (user + '.github.io');
+  var branch = 'main';
+
+  // 尝试从页面 base 标签或 script src 推断分支（GitHub Pages 默认 main 或 master）
+  return { user: user, repo: repo, branch: branch };
+}
+
+// ============================================================
+// GitHub API 模式
+// ============================================================
+async function loadGitHub(gh) {
+  document.getElementById('modeBadge').textContent = 'GitHub Pages';
+  document.getElementById('loadDetail').textContent = '仓库: ' + gh.user + '/' + gh.repo;
+
+  var apiUrl = 'https://api.github.com/repos/' + encodeURIComponent(gh.user) + '/' +
+    encodeURIComponent(gh.repo) + '/contents/list?ref=' + encodeURIComponent(gh.branch);
+
+  var resp;
+  try { resp = await fetch(apiUrl); }
+  catch(e) {
+    status('🔌', '无法连接 GitHub API', '请检查网络连接。');
+    return;
+  }
+
+  if (resp.status === 403 && resp.headers.get('X-RateLimit-Remaining') === '0') {
+    status('⏳', 'API 请求次数用尽', 'GitHub 未认证 API 每小时限 60 次，请稍后再试。');
+    return;
+  }
+  if (resp.status === 404) {
+    status('📂', '未找到 list/ 目录',
+      '请在仓库根目录创建 <code>list/</code> 文件夹并放入代码文件。<br>' +
+      '当前分支: <code>' + gh.branch + '</code>，如果使用 master 分支请修改源码中的 branch 变量。');
+    return;
+  }
+  if (!resp.ok) {
+    status('❌', '请求失败 (HTTP ' + resp.status + ')', '如果仓库是私有的，当前仅支持公开仓库。');
+    return;
+  }
+
+  var fileList;
+  try { fileList = await resp.json(); }
+  catch(e) { status('❌', '数据解析失败'); return; }
+
+  if (!Array.isArray(fileList) || fileList.length === 0) {
+    status('📂', 'list/ 文件夹为空', '将代码文件放入 list/ 文件夹并 push 到 GitHub，刷新页面即可。');
+    return;
+  }
+
+  status('⏳', '正在加载 ' + fileList.length + ' 个文件...', '从 GitHub 获取文件内容，不消耗 API 配额。');
+
+  var loaded = [];
+  for (var i = 0; i < fileList.length; i++) {
+    var f = fileList[i];
+    if (f.type !== 'file') continue;
+    try {
+      var cr = await fetch(f.download_url);
+      if (!cr.ok) continue;
+      var content = await cr.text();
+      var ext = getExt(f.name);
+      loaded.push({ name: f.name, size: f.size, language: LANG_MAP[ext] || 'plaintext', icon: ICONS[ext] || '📄', content: content });
+    } catch(e) { console.warn('加载失败:', f.name); }
+  }
+
+  if (loaded.length === 0) { status('⚠️', '未能加载文件内容'); return; }
+
+  FILES_DATA = loaded;
+  SOURCE = 'github';
+  render();
+  enableControls(true);
+}
+
+// ============================================================
+// 本地 File System Access API 模式
+// ============================================================
+async function loadLocal() {
+  document.getElementById('modeBadge').textContent = '本地模式';
+  document.getElementById('loadDetail').textContent = '';
+
+  if (!('showDirectoryPicker' in window)) {
+    status('🌐', '当前不在 GitHub Pages，且浏览器不支持本地文件夹读取',
+      '请将本页面部署到 GitHub Pages，或使用 Chrome / Edge 浏览器打开。<br><br>' +
+      '<button class="btn" onclick="loadLocal()" style="font-size:14px;padding:10px 20px">🔄 重试</button>');
+    return;
+  }
+
+  status('📁', '请选择 list 文件夹',
+    '<button class="btn" id="pickBtn" style="font-size:14px;padding:10px 20px;margin-top:12px">📂 选择 list 文件夹</button>' +
+    '<p class="detail" style="margin-top:16px">点击按钮后，在弹出的文件选择对话框中<br>找到并选中项目中的 <code>list/</code> 文件夹，然后点击"选择文件夹"。</p>');
+
+  document.getElementById('pickBtn').addEventListener('click', async function() {
+    try {
+      var dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+      status('⏳', '正在读取文件...', '文件夹: ' + dirHandle.name);
+
+      var loaded = [];
+      for await (var [name, handle] of dirHandle.entries()) {
+        if (handle.kind !== 'file') continue;
+        var ext = getExt(name);
+        try {
+          var file = await handle.getFile();
+          var content = await file.text();
+          loaded.push({ name: name, size: file.size, language: LANG_MAP[ext] || 'plaintext', icon: ICONS[ext] || '📄', content: content });
+        } catch(e) { console.warn('读取失败:', name); }
+      }
+
+      if (loaded.length === 0) {
+        status('📂', '所选文件夹中没有可读取的文件', '请确认选择的是包含代码文件的 list/ 文件夹。');
+        return;
+      }
+
+      loaded.sort(function(a,b){ return a.name.localeCompare(b.name); });
+      FILES_DATA = loaded;
+      SOURCE = 'local';
+      render();
+      enableControls(true);
+    } catch(e) {
+      if (e.name !== 'AbortError') {
+        status('❌', '读取失败', e.message || '未知错误');
+      }
+    }
+  });
+}
+
+// ============================================================
+// 渲染
+// ============================================================
+function render() {
+  var listEl = document.getElementById('fileList');
+
+  listEl.innerHTML = FILES_DATA.map(function(file, i) {
+    return '<div class="file-item" data-name="' + escapeHtml(file.name) + '">' +
+      '<div class="file-header" onclick="toggleFile(this)">' +
+        '<span class="file-icon">' + file.icon + '</span>' +
+        '<span class="file-name" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</span>' +
+        '<span class="file-lang">' + file.language + '</span>' +
+        '<span class="file-size">' + formatSize(file.size) + '</span>' +
+        '<span class="file-arrow">▶</span>' +
+      '</div>' +
+      '<div class="file-body">' +
+        '<div class="file-actions">' +
+          '<button class="copy-btn" data-idx="' + i + '">📋 复制代码</button>' +
+        '</div>' +
+        '<div class="code-wrapper">' +
+          '<pre><code class="language-' + file.language + '">' + escapeHtml(file.content) + '</code></pre>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  listEl.querySelectorAll('pre code').forEach(function(b){ hljs.highlightElement(b); });
+
+  listEl.querySelectorAll('.copy-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var idx = parseInt(btn.getAttribute('data-idx'));
+      copyCode(FILES_DATA[idx].content, btn);
+    });
+  });
+
+  document.getElementById('stats').textContent = '共 ' + FILES_DATA.length + ' 个文件';
+}
+
+function copyCode(content, btn) {
+  navigator.clipboard.writeText(content).then(function(){
+    btn.classList.add('copied'); btn.textContent = '✓ 已复制';
+    showToast('代码已复制到剪贴板');
+    setTimeout(function(){ btn.classList.remove('copied'); btn.textContent = '📋 复制代码'; }, 2000);
+  }).catch(function(){
+    btn.textContent = '⚠ 复制失败';
+    setTimeout(function(){ btn.textContent = '📋 复制代码'; }, 2000);
+  });
+}
+
+function toggleFile(header) { header.parentElement.classList.toggle('open'); }
+
+// ============================================================
+// 交互
+// ============================================================
+document.getElementById('search').addEventListener('input', function(e){
+  var q = e.target.value.toLowerCase(), visible = 0;
+  document.querySelectorAll('.file-item').forEach(function(item){
+    var show = item.dataset.name.toLowerCase().indexOf(q) !== -1;
+    item.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('stats').textContent =
+    q ? '匹配 ' + visible + '/' + FILES_DATA.length + ' 个' : '共 ' + FILES_DATA.length + ' 个文件';
+});
+
+document.getElementById('expandAll').addEventListener('click', function(){
+  document.querySelectorAll('.file-item').forEach(function(item){
+    if (item.style.display !== 'none') item.classList.add('open');
+  });
+});
+
+document.getElementById('collapseAll').addEventListener('click', function(){
+  document.querySelectorAll('.file-item').forEach(function(item){ item.classList.remove('open'); });
+});
+
+document.addEventListener('keydown', function(e){
+  if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); document.getElementById('search').focus(); }
+  if (e.key==='Escape') {
+    document.getElementById('search').value='';
+    document.getElementById('search').dispatchEvent(new Event('input'));
+    document.getElementById('collapseAll').click();
+  }
+});
+
+// ============================================================
+// 启动：自动判断数据来源
+// ============================================================
+(function init(){
+  var gh = detectGitHubPages();
+  if (gh) {
+    loadGitHub(gh);
+  } else {
+    loadLocal();
+  }
+})();
+</script>
+</body>
+</html>

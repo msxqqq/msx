@@ -4909,8 +4909,15 @@ function App() {
   // Save workflow to JSON file
   var fileInputRef = useRef(null);
   var handleSave = useCallback(() => {
+    // Strip execution output fields so saved JSON is clean (no runtime images/videos/blob URLs)
+    var EXEC_FIELDS = ['displayValue','outputUrl','status','_res','_vres','_result','saved','dataUrl','images','frameUrls','frameCount','iw','ih','ifmt','_outputs','imageUrl','videoUrl'];
+    var cleanNodes = nodes.map(function(n){
+      var d = Object.assign({}, n.data);
+      EXEC_FIELDS.forEach(function(k){ delete d[k]; });
+      return Object.assign({}, n, { data: d });
+    });
     var data = {
-      nodes,
+      nodes: cleanNodes,
       edges,
       nextId: nidRef.current
     };
@@ -4941,7 +4948,7 @@ function App() {
         var data = JSON.parse(reader.result);
         if (data.nodes && data.edges) {
           // Strip execution output fields so mini-app doesn't show stale results
-          var EXEC_FIELDS = ['displayValue','outputUrl','status','_res','_vres','saved','dataUrl','images','iw','ih','ifmt','_outputs'];
+          var EXEC_FIELDS = ['displayValue','outputUrl','status','_res','_vres','_result','saved','dataUrl','images','frameUrls','frameCount','iw','ih','ifmt','_outputs'];
           data.nodes.forEach(function(n){
             if(!n.data) return;
             EXEC_FIELDS.forEach(function(k){ delete n.data[k]; });
@@ -4988,7 +4995,7 @@ function App() {
           var data = JSON.parse(reader.result);
           if (data.nodes && data.edges) {
             // Strip execution output fields so mini-app doesn't show stale results
-            var EXEC_FIELDS2 = ['displayValue','outputUrl','status','_res','_vres','saved','dataUrl','images','iw','ih','ifmt','_outputs'];
+            var EXEC_FIELDS2 = ['displayValue','outputUrl','status','_res','_vres','_result','saved','dataUrl','images','frameUrls','frameCount','iw','ih','ifmt','_outputs'];
             data.nodes.forEach(function(n){
               if(!n.data) return;
               EXEC_FIELDS2.forEach(function(k){ delete n.data[k]; });
@@ -5275,7 +5282,30 @@ console.log('✅ AI Workflow Editor mounted successfully');
 (function(){
 var W=window,Wf=W.__wf||{},_nodes=[],_edges=[],_mode='editor',_settingsId=null;
 
-// ── Inject mode toggle into topbar ──
+// ── Cloud workflow configuration ──
+// Set this to the base URL of your cloud workflow directory.
+// Example: 'https://msxqqq.github.io/msx/ai_workflow/workflow/'
+// Leave empty string '' to only auto-detect from the current page URL.
+var _cloudWorkflowUrl = 'https://msxqqq.github.io/msx/ai_workflow/workflow/';
+
+// Parse a GitHub Pages or github.com URL into {owner, repo, path}
+function parseGitHubUrl(url) {
+  if (!url) return null;
+  var u = url.replace(/\/+$/, '');
+  // pattern: owner.github.io/repo/path...
+  var m = u.match(/^https?:\/\/(.+)\.github\.io\/([^\/]+)(\/.*)?$/);
+  if (m) {
+    return { owner: m[1], repo: m[2], path: (m[3] || '').replace(/^\//, '') };
+  }
+  // pattern: github.com/owner/repo/path...
+  var m2 = u.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)(\/.*)?$/);
+  if (m2) {
+    return { owner: m2[1], repo: m2[2], path: (m2[3] || '').replace(/^\//, '') };
+  }
+  return null;
+}
+
+// Inject mode toggle into topbar ──
 function injectToggle(){
   var tb=document.querySelector('.topbar');
   if(!tb||document.getElementById('wf-toggle-btn')) return;
@@ -5364,7 +5394,7 @@ function fetchNetworkWorkflows() {
   if (!listEl) return;
   listEl.innerHTML = '<div class="rp-loading">加载中…</div>';
 
-  // Try parsing owner/repo from GitHub Pages URL
+  // Try parsing owner/repo from GitHub Pages URL or cloud config
   var ghApi = getGitHubApiUrl();
   if (ghApi) {
     fetch(ghApi)
@@ -5380,52 +5410,93 @@ function fetchNetworkWorkflows() {
         renderWfList(listEl, wfs, 'network');
       })
       .catch(function () {
-        // Fallback: try manifest.json
-        fetch('./workflow/manifest.json')
+        // Fallback: try manifest.json at cloud base URL
+        var baseUrl = getCloudBaseUrl();
+        var manifestUrl = baseUrl ? baseUrl + 'manifest.json' : './workflow/manifest.json';
+        fetch(manifestUrl)
           .then(function (r) { if (!r.ok) throw new Error('no manifest'); return r.json(); })
           .then(function (manifest) {
             var wfs = (manifest || []).map(function (m) {
-              return { name: m.name || m.file, file: m.file || m.name, url: './workflow/' + (m.file || m.name) };
+              return { name: m.name || m.file, file: m.file || m.name, url: (baseUrl || './workflow/') + (m.file || m.name) };
             });
             renderWfList(listEl, wfs, 'network');
           })
           .catch(function () {
-            listEl.innerHTML = '<div class="rp-empty">无法获取云端工作流<br><span style="font-size:10px">请确认部署在 GitHub Pages 或创建 workflow/manifest.json</span></div>';
+            listEl.innerHTML = '<div class="rp-empty">无法获取云端工作流<br><span style="font-size:10px">请确认部署在 GitHub Pages 或创建 manifest.json<br>云端地址: ' + (baseUrl || '未配置') + '</span></div>';
           });
       });
   } else {
-    // Not on GitHub Pages — try manifest
-    fetch('./workflow/manifest.json')
+    // No GitHub API URL available — try manifest.json at cloud base URL
+    var baseUrl = getCloudBaseUrl();
+    var manifestUrl = baseUrl ? baseUrl + 'manifest.json' : './workflow/manifest.json';
+    fetch(manifestUrl)
       .then(function (r) { if (!r.ok) throw new Error('no manifest'); return r.json(); })
       .then(function (manifest) {
         var wfs = (manifest || []).map(function (m) {
-          return { name: m.name || m.file, file: m.file || m.name, url: './workflow/' + (m.file || m.name) };
+          return { name: m.name || m.file, file: m.file || m.name, url: (baseUrl || './workflow/') + (m.file || m.name) };
         });
         renderWfList(listEl, wfs, 'network');
       })
       .catch(function () {
-        listEl.innerHTML = '<div class="rp-empty">未找到 workflow/manifest.json</div>';
+        listEl.innerHTML = '<div class="rp-empty">未找到 manifest.json<br><span style="font-size:10px">云端地址: ' + (baseUrl || '未配置') + '</span></div>';
       });
   }
 }
 
 function getGitHubApiUrl() {
+  // 1) If cloud URL is configured, use it
+  if (_cloudWorkflowUrl) {
+    var parsed = parseGitHubUrl(_cloudWorkflowUrl);
+    if (parsed) {
+      var p = parsed.path;
+      if (!p) p = 'workflow';
+      return 'https://api.github.com/repos/' + parsed.owner + '/' + parsed.repo + '/contents/' + p;
+    }
+  }
+  // 2) Auto-detect from current page URL (when hosted on GitHub Pages)
   var host = window.location.hostname;
-  var path = window.location.pathname.replace(/\/$/, '');
-  // github.io pattern: owner.github.io/repo
+  var path = window.location.pathname.replace(/\/+$/, '');
+  // github.io pattern: owner.github.io/repo/subpath...
+  var m = host.match(/^(.+)\.github\.io$/);
+  if (m) {
+    var owner = m[1];
+    var parts = path.split('/');
+    // parts: ['', 'repo', 'subpath1', 'subpath2', ...]
+    var repo = parts[1] || '';
+    if (owner && repo) {
+      // Check if remaining path includes 'workflow'
+      var subPath = parts.slice(2).join('/');
+      // If subpath already ends with or contains 'workflow', use it as-is
+      if (subPath && /\/?workflow/.test(subPath)) {
+        return 'https://api.github.com/repos/' + owner + '/' + repo + '/contents/' + subPath;
+      }
+      // Otherwise assume workflow/ at root of repo
+      return 'https://api.github.com/repos/' + owner + '/' + repo + '/contents/workflow';
+    }
+  }
+  // github.com pattern: github.com/owner/repo
+  if (host === 'github.com') {
+    var parts2 = path.split('/');
+    if (parts2.length >= 3) return 'https://api.github.com/repos/' + parts2[1] + '/' + parts2[2] + '/contents/workflow';
+  }
+  return null;
+}
+
+// Resolve the cloud base URL for downloading workflow files
+function getCloudBaseUrl() {
+  if (_cloudWorkflowUrl) return _cloudWorkflowUrl.replace(/\/+$/, '') + '/';
+  // Auto-detect from current page URL
+  var host = window.location.hostname;
+  var path = window.location.pathname.replace(/\/+$/, '');
   var m = host.match(/^(.+)\.github\.io$/);
   if (m) {
     var owner = m[1];
     var repo = path.split('/')[1] || '';
-    if (owner && repo) return 'https://api.github.com/repos/' + owner + '/' + repo + '/contents/workflow';
-  }
-  // github.com pattern: github.com/owner/repo
-  if (host === 'github.com') {
-    var parts = path.split('/');
-    if (parts.length >= 3) return 'https://api.github.com/repos/' + parts[1] + '/' + parts[2] + '/contents/workflow';
+    if (owner && repo) return 'https://' + owner + '.github.io/' + repo + '/workflow/';
   }
   return null;
 }
+
 
 // ── Local: webkitdirectory folder picker ──
 function openLocalFolder() {
@@ -5531,8 +5602,9 @@ window.loadWorkflowItem = function (el) {
     el.style.opacity = '1';
     el.style.pointerEvents = 'auto';
   } else if (source === 'network') {
-    // Network: fetch from URL
-    var url = item.url || ('./workflow/' + item.file);
+    // Network: fetch from URL — use item.url if available, otherwise construct from cloud base URL
+    var baseUrl = getCloudBaseUrl();
+    var url = item.url || (baseUrl ? baseUrl + item.file : './workflow/' + item.file);
     fetch(url)
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);

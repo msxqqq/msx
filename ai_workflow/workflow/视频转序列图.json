@@ -100,8 +100,8 @@
       "id": "n8",
       "type": "appOutput",
       "position": {
-        "x": 2285.9588898690954,
-        "y": 1351.525034471124
+        "x": 2775.9916058924923,
+        "y": 1409.9954019184274
       },
       "data": {
         "label": "序列图",
@@ -110,8 +110,8 @@
       "width": 220,
       "height": 119,
       "positionAbsolute": {
-        "x": 2285.9588898690954,
-        "y": 1351.525034471124
+        "x": 2775.9916058924923,
+        "y": 1409.9954019184274
       },
       "selected": false,
       "dragging": false
@@ -120,8 +120,8 @@
       "id": "n11",
       "type": "imageGrid",
       "position": {
-        "x": 1851.3685754638677,
-        "y": 1248.5172489853094
+        "x": 1802.8656453355352,
+        "y": 1250.0329655518196
       },
       "data": {
         "rows": 8,
@@ -131,8 +131,8 @@
       "height": 203,
       "selected": false,
       "positionAbsolute": {
-        "x": 1851.3685754638677,
-        "y": 1248.5172489853094
+        "x": 1802.8656453355352,
+        "y": 1250.0329655518196
       },
       "dragging": false
     },
@@ -173,15 +173,15 @@
       "id": "n17",
       "type": "imagePreview",
       "position": {
-        "x": 2462.3441757221635,
-        "y": 1058.3713801003923
+        "x": 2782.160371255857,
+        "y": 1102.3271605291939
       },
       "data": {},
       "width": 220,
       "height": 179,
       "positionAbsolute": {
-        "x": 2462.3441757221635,
-        "y": 1058.3713801003923
+        "x": 2782.160371255857,
+        "y": 1102.3271605291939
       },
       "selected": false,
       "dragging": false
@@ -190,8 +190,8 @@
       "id": "n18",
       "type": "appOutput",
       "position": {
-        "x": 2293.8820506974603,
-        "y": 1573.4109685076498
+        "x": 2773.3587034346738,
+        "y": 1668.8275574565941
       },
       "data": {
         "label": "序列预览",
@@ -201,8 +201,8 @@
       "height": 119,
       "selected": false,
       "positionAbsolute": {
-        "x": 2293.8820506974603,
-        "y": 1573.4109685076498
+        "x": 2773.3587034346738,
+        "y": 1668.8275574565941
       },
       "dragging": false
     },
@@ -439,14 +439,16 @@
         "mode": "single",
         "items": [],
         "defaultValue": "true",
-        "order": 5
+        "order": 6
       },
       "width": 220,
       "height": 261,
       "positionAbsolute": {
         "x": 874.6295315212803,
         "y": 910.6674288097817
-      }
+      },
+      "selected": false,
+      "dragging": false
     },
     {
       "id": "n43",
@@ -462,6 +464,100 @@
       "positionAbsolute": {
         "x": 1492.147071049544,
         "y": 1107.7027118852545
+      },
+      "dragging": false
+    },
+    {
+      "id": "n45",
+      "type": "imageResize",
+      "position": {
+        "x": 2271.4930719173435,
+        "y": 1325.68424783805
+      },
+      "data": {
+        "width": 512,
+        "height": 512
+      },
+      "width": 362,
+      "height": 185,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 2271.4930719173435,
+        "y": 1325.68424783805
+      },
+      "dragging": false
+    },
+    {
+      "id": "n46",
+      "type": "appInput",
+      "position": {
+        "x": 1210.9693996644194,
+        "y": 1350.236652406279
+      },
+      "data": {
+        "label": "图片分辨率X",
+        "inputType": "number",
+        "mode": "single",
+        "items": [
+          {
+            "label": "512*512",
+            "value": "512"
+          },
+          {
+            "label": "1024*1024",
+            "value": "1024"
+          },
+          {
+            "label": "2048*2048",
+            "value": "2048"
+          }
+        ],
+        "defaultValue": "1024",
+        "order": 5
+      },
+      "width": 220,
+      "height": 323,
+      "positionAbsolute": {
+        "x": 1210.9693996644194,
+        "y": 1350.236652406279
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "n47",
+      "type": "appInput",
+      "position": {
+        "x": 1220.8264783916006,
+        "y": 1693.9991434673018
+      },
+      "data": {
+        "label": "图片分辨率Y",
+        "inputType": "number",
+        "mode": "single",
+        "items": [
+          {
+            "label": "512*512",
+            "value": "512"
+          },
+          {
+            "label": "1024*1024",
+            "value": "1024"
+          },
+          {
+            "label": "2048*2048",
+            "value": "2048"
+          }
+        ],
+        "defaultValue": "1024",
+        "order": 5
+      },
+      "width": 220,
+      "height": 323,
+      "selected": false,
+      "positionAbsolute": {
+        "x": 1220.8264783916006,
+        "y": 1693.9991434673018
       },
       "dragging": false
     }
@@ -516,49 +612,11 @@
         "type": "arrowclosed",
         "color": "#6e7681"
       },
-      "source": "n11",
-      "sourceHandle": "image",
-      "target": "n8",
-      "targetHandle": "value",
-      "id": "reactflow__edge-n11image-n8value",
-      "className": "",
-      "selected": false
-    },
-    {
-      "type": "default",
-      "animated": false,
-      "style": {
-        "stroke": "#6e7681",
-        "strokeWidth": 2
-      },
-      "markerEnd": {
-        "type": "arrowclosed",
-        "color": "#6e7681"
-      },
       "source": "n19",
       "sourceHandle": "video",
       "target": "n18",
       "targetHandle": "value",
       "id": "reactflow__edge-n19video-n18value",
-      "className": "",
-      "selected": false
-    },
-    {
-      "type": "default",
-      "animated": false,
-      "style": {
-        "stroke": "#6e7681",
-        "strokeWidth": 2
-      },
-      "markerEnd": {
-        "type": "arrowclosed",
-        "color": "#6e7681"
-      },
-      "source": "n11",
-      "sourceHandle": "image",
-      "target": "n17",
-      "targetHandle": "image",
-      "id": "reactflow__edge-n11image-n17image",
       "className": "",
       "selected": false
     },
@@ -1021,7 +1079,97 @@
       "targetHandle": "images",
       "id": "reactflow__edge-n43result-n19images",
       "className": ""
+    },
+    {
+      "type": "default",
+      "animated": false,
+      "style": {
+        "stroke": "#6e7681",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#6e7681"
+      },
+      "source": "n46",
+      "sourceHandle": "value",
+      "target": "n45",
+      "targetHandle": "width",
+      "id": "reactflow__edge-n46value-n45width",
+      "className": ""
+    },
+    {
+      "type": "default",
+      "animated": false,
+      "style": {
+        "stroke": "#6e7681",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#6e7681"
+      },
+      "source": "n11",
+      "sourceHandle": "image",
+      "target": "n45",
+      "targetHandle": "image",
+      "id": "reactflow__edge-n11image-n45image",
+      "className": ""
+    },
+    {
+      "type": "default",
+      "animated": false,
+      "style": {
+        "stroke": "#6e7681",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#6e7681"
+      },
+      "source": "n45",
+      "sourceHandle": "image",
+      "target": "n17",
+      "targetHandle": "image",
+      "id": "reactflow__edge-n45image-n17image",
+      "className": ""
+    },
+    {
+      "type": "default",
+      "animated": false,
+      "style": {
+        "stroke": "#6e7681",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#6e7681"
+      },
+      "source": "n45",
+      "sourceHandle": "image",
+      "target": "n8",
+      "targetHandle": "value",
+      "id": "reactflow__edge-n45image-n8value",
+      "className": ""
+    },
+    {
+      "type": "default",
+      "animated": false,
+      "style": {
+        "stroke": "#6e7681",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#6e7681"
+      },
+      "source": "n47",
+      "sourceHandle": "value",
+      "target": "n45",
+      "targetHandle": "height",
+      "id": "reactflow__edge-n47value-n45height",
+      "className": ""
     }
   ],
-  "nextId": 43
+  "nextId": 47
 }

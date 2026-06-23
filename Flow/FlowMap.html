@@ -6,16 +6,16 @@
 <title>Flowmap Canvas - 流向图绘制工具</title>
 <style>
   :root {
-    --bg: #1c1c1c;
-    --panel: #242424;
-    --surface: #333333;
+    --bg: #0d1117;
+    --panel: #161b22;
+    --surface: #21262d;
     --accent: #e94560;
     --accent2: #4a4a6a;
-    --text: #d0d0d0;
-    --text2: #999999;
-    --border: #383838;
-    --hover: #3d3d3d;
-    --slider-track: #383838;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --border: #30363d;
+    --hover: #292e36;
+    --slider-track: #21262d;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -212,7 +212,7 @@
     align-items: center;
     justify-content: center;
     position: relative;
-    background: repeating-conic-gradient(#2a2a2a 0% 25%, #222222 0% 50%) 50% / 20px 20px;
+    background: repeating-conic-gradient(#0d1117 0% 25%, #0a0e14 0% 50%) 50% / 20px 20px;
     overflow: hidden;
   }
   .canvas-viewport {
@@ -1256,13 +1256,13 @@ function updatePatternTexture() {
     }
     pctx.putImageData(id, 0, 0);
   } else if (currentPattern === 'grid') {
-    pctx.fillStyle = '#3a3a3a';
+    pctx.fillStyle = '#21262d';
     pctx.fillRect(0, 0, sz, sz);
     pctx.strokeStyle = '#ccc'; pctx.lineWidth = 2;
     for (let y = 0; y <= sz; y += 20) { pctx.beginPath(); pctx.moveTo(0,y); pctx.lineTo(sz,y); pctx.stroke(); }
     for (let x = 0; x <= sz; x += 20) { pctx.beginPath(); pctx.moveTo(x,0); pctx.lineTo(x,sz); pctx.stroke(); }
   } else if (currentPattern === 'dots') {
-    pctx.fillStyle = '#2a2a2a';
+    pctx.fillStyle = '#161b22';
     pctx.fillRect(0, 0, sz, sz);
     pctx.fillStyle = '#eee';
     for (let y = 10; y < sz; y += 20) {
@@ -1428,13 +1428,13 @@ function renderMainPatternLowRes() {
     }
     pc.putImageData(id, 0, 0);
   } else if (currentPattern === 'grid') {
-    pc.fillStyle = '#3a3a3a';
+    pc.fillStyle = '#21262d';
     pc.fillRect(0, 0, sz, sz);
     pc.strokeStyle = '#ccc'; pc.lineWidth = 2;
     for (let y = 0; y <= sz; y += 20) { pc.beginPath(); pc.moveTo(0,y); pc.lineTo(sz,y); pc.stroke(); }
     for (let x = 0; x <= sz; x += 20) { pc.beginPath(); pc.moveTo(x,0); pc.lineTo(x,sz); pc.stroke(); }
   } else if (currentPattern === 'dots') {
-    pc.fillStyle = '#2a2a2a';
+    pc.fillStyle = '#161b22';
     pc.fillRect(0, 0, sz, sz);
     pc.fillStyle = '#eee';
     for (let y = 10; y < sz; y += 20) {

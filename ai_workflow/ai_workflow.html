@@ -322,7 +322,7 @@ body {
 /* ── Lightbox ── */
 .wf-lightbox{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:300;background:rgba(0,0,0,0.92);align-items:center;justify-content:center;flex-direction:column}
 .wf-lightbox.show{display:flex}
-.wf-lightbox img{max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;box-shadow:0 0 60px rgba(0,0,0,0.8);cursor:default}
+.wf-lightbox img{max-width:95vw;max-height:85vh;object-fit:contain;border-radius:8px;box-shadow:0 0 60px rgba(0,0,0,0.8);cursor:pointer}
 .wf-lightbox .wf-lb-close{position:absolute;top:16px;right:20px;color:#fff;font-size:30px;cursor:pointer;z-index:301;background:rgba(255,255,255,0.12);border:none;border-radius:50%;width:48px;height:48px;display:flex;align-items:center;justify-content:center;transition:background .2s}
 .wf-lightbox .wf-lb-close:hover{background:rgba(255,255,255,0.25)}
 .wf-lightbox .wf-lb-info{color:var(--text-muted,#6e7681);font-size:11px;margin-top:12px}
@@ -439,14 +439,15 @@ var NODE_REGISTRY = [
   color: '#58a6ff',
   inputs: [],
   outputs: [{
-    id: 'image',
-    label: '图片',
+    id: 'images',
+    label: '图片列表',
     htype: 'i'
   }],
   defaults: {
     fileName: '',
     fileSize: 0,
     imageUrl: null,
+    images: [],
     iw: 0,
     ih: 0
   }
@@ -712,6 +713,97 @@ var NODE_REGISTRY = [
   defaults: {
     rows: 4,
     cols: 4
+  }
+}, {
+  type: 'channelSplit',
+  cat: 'process',
+  catName: '图像处理',
+  name: '通道分离',
+  icon: '🔲',
+  color: '#3fb950',
+  inputs: [{
+    id: 'image',
+    label: '图片',
+    htype: 'i'
+  }],
+  outputs: [{
+    id: 'r',
+    label: 'R 通道',
+    htype: 'i'
+  }, {
+    id: 'g',
+    label: 'G 通道',
+    htype: 'i'
+  }, {
+    id: 'b',
+    label: 'B 通道',
+    htype: 'i'
+  }, {
+    id: 'a',
+    label: 'A 通道',
+    htype: 'i'
+  }],
+  defaults: {}
+}, {
+  type: 'channelMerge',
+  cat: 'process',
+  catName: '图像处理',
+  name: '通道合并',
+  icon: '🔀',
+  color: '#3fb950',
+  inputs: [{
+    id: 'channel_r',
+    label: 'R 通道',
+    htype: 'i'
+  }, {
+    id: 'channel_g',
+    label: 'G 通道',
+    htype: 'i'
+  }, {
+    id: 'channel_b',
+    label: 'B 通道',
+    htype: 'i'
+  }, {
+    id: 'channel_a',
+    label: 'A 通道',
+    htype: 'i'
+  }],
+  outputs: [{
+    id: 'image',
+    label: '合并图片',
+    htype: 'i'
+  }],
+  defaults: {}
+},
+// ═══ 黑底抠图 ═══
+{
+  type: 'blackBgToAlpha',
+  cat: 'process',
+  catName: '图像处理',
+  name: '黑底抠图',
+  icon: '✂️',
+  color: '#3fb950',
+  inputs: [{
+    id: 'image',
+    label: '输入图片',
+    htype: 'i'
+  }, {
+    id: 'threshold',
+    label: '黑色阈值',
+    htype: 'n'
+  }, {
+    id: 'feather',
+    label: '羽化幅度',
+    htype: 'n'
+  }],
+  outputs: [{
+    id: 'image',
+    label: '抠图结果',
+    htype: 'i'
+  }],
+  defaults: {
+    threshold: 30,
+    feather: 5
   }
 },
 // ═══ 预览 ═══
@@ -1241,6 +1333,137 @@ function NumberInputNode(_ref5) {
   }));
 }
 
+// ═══ TGA Decoder — converts TGA file to PNG data URL with alpha ═══
+var decodeTGA = window.decodeTGA = function(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var buf = e.target.result;
+        var dv = new DataView(buf);
+        // TGA header (18 bytes)
+        var idLen = dv.getUint8(0);
+        var colorMapType = dv.getUint8(1);
+        var imageType = dv.getUint8(2);
+        // Width, Height (little-endian)
+        var w = dv.getUint16(12, true);
+        var h = dv.getUint16(14, true);
+        var bpp = dv.getUint8(16);
+        var desc = dv.getUint8(17);
+        var alphaBits = desc & 0x0f;
+        var topOrigin = (desc & 0x20) !== 0;
+        var hasAlpha = bpp === 32 || alphaBits === 8;
+        var pixelSize = bpp / 8;
+        // Skip ID field + color map data
+        var offset = 18 + idLen;
+        if (colorMapType === 1) {
+          var cmLen = dv.getUint16(5, true);
+          var cmSize = dv.getUint8(7);
+          offset += cmLen * (cmSize / 8);
+        }
+        // Decode pixels
+        var pixels = new Uint8ClampedArray(w * h * 4);
+        var isRLE = imageType === 10;
+        var srcIdx = offset;
+        var dstIdx = 0;
+        var totalPixels = w * h;
+        while (dstIdx < totalPixels) {
+          if (isRLE) {
+            var hdr = dv.getUint8(srcIdx++);
+            var isRun = (hdr & 0x80) !== 0;
+            var count = (hdr & 0x7f) + 1;
+            if (isRun) {
+              // RLE packet: read one pixel and repeat
+              if (pixelSize === 4) {
+                var b = dv.getUint8(srcIdx++);
+                var g = dv.getUint8(srcIdx++);
+                var r = dv.getUint8(srcIdx++);
+                var a = dv.getUint8(srcIdx++);
+                for (var ri = 0; ri < count && dstIdx < totalPixels; ri++) {
+                  var p = dstIdx * 4;
+                  pixels[p] = r; pixels[p+1] = g; pixels[p+2] = b; pixels[p+3] = a;
+                  dstIdx++;
+                }
+              } else {
+                var _b = dv.getUint8(srcIdx++);
+                var _g = dv.getUint8(srcIdx++);
+                var _r = dv.getUint8(srcIdx++);
+                for (var _ri = 0; _ri < count && dstIdx < totalPixels; _ri++) {
+                  var _p = dstIdx * 4;
+                  pixels[_p] = _r; pixels[_p+1] = _g; pixels[_p+2] = _b; pixels[_p+3] = 255;
+                  dstIdx++;
+                }
+              }
+            } else {
+              // Raw packet: read 'count' pixels verbatim
+              for (var _ri2 = 0; _ri2 < count && dstIdx < totalPixels; _ri2++) {
+                if (pixelSize === 4) {
+                  var _b2 = dv.getUint8(srcIdx++);
+                  var _g2 = dv.getUint8(srcIdx++);
+                  var _r2 = dv.getUint8(srcIdx++);
+                  var _a = dv.getUint8(srcIdx++);
+                  var _p2 = dstIdx * 4;
+                  pixels[_p2] = _r2; pixels[_p2+1] = _g2; pixels[_p2+2] = _b2; pixels[_p2+3] = _a;
+                } else {
+                  var _b3 = dv.getUint8(srcIdx++);
+                  var _g3 = dv.getUint8(srcIdx++);
+                  var _r3 = dv.getUint8(srcIdx++);
+                  var _p3 = dstIdx * 4;
+                  pixels[_p3] = _r3; pixels[_p3+1] = _g3; pixels[_p3+2] = _b3; pixels[_p3+3] = 255;
+                }
+                dstIdx++;
+              }
+            }
+          } else {
+            // Uncompressed
+            if (pixelSize === 4) {
+              var _b4 = dv.getUint8(srcIdx++);
+              var _g4 = dv.getUint8(srcIdx++);
+              var _r4 = dv.getUint8(srcIdx++);
+              var _a2 = dv.getUint8(srcIdx++);
+              var _p4 = dstIdx * 4;
+              pixels[_p4] = _r4; pixels[_p4+1] = _g4; pixels[_p4+2] = _b4; pixels[_p4+3] = _a2;
+            } else {
+              var _b5 = dv.getUint8(srcIdx++);
+              var _g5 = dv.getUint8(srcIdx++);
+              var _r5 = dv.getUint8(srcIdx++);
+              var _p5 = dstIdx * 4;
+              pixels[_p5] = _r5; pixels[_p5+1] = _g5; pixels[_p5+2] = _b5; pixels[_p5+3] = 255;
+            }
+            dstIdx++;
+          }
+        }
+        // Handle bottom-left origin (flip Y)
+        if (!topOrigin) {
+          var flipped = new Uint8ClampedArray(w * h * 4);
+          for (var y = 0; y < h; y++) {
+            var srcRow = y * w * 4;
+            var dstRow = (h - 1 - y) * w * 4;
+            for (var x = 0; x < w * 4; x++) {
+              flipped[dstRow + x] = pixels[srcRow + x];
+            }
+          }
+          pixels = flipped;
+        }
+        // Render to canvas and export as PNG
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        var imageData = ctx.createImageData(w, h);
+        imageData.data.set(pixels);
+        ctx.putImageData(imageData, 0, 0);
+        var dataUrl = canvas.toDataURL('image/png');
+        resolve(dataUrl);
+      } catch(err) {
+        reject(err);
+      }
+    };
+    reader.onerror = function() { reject(new Error('Failed to read TGA file')); };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 // ═══ Image Load Node ═══
 function ImageLoadNode(_ref6) {
   var id = _ref6.id,
@@ -1253,26 +1476,75 @@ function ImageLoadNode(_ref6) {
     _useStateY = _slicedToArray(_useStateX, 2),
     modalImg = _useStateY[0],
     setModalImg = _useStateY[1];
+  var _useStateX2 = useState(null),
+    _useStateY2 = _slicedToArray(_useStateX2, 2),
+    modalIdx = _useStateY2[0],
+    setModalIdx = _useStateY2[1];
   var closeModal = function () {
     return setModalImg(null);
   };
   var handleFile = useCallback(e => {
-    var _e$target$files;
-    var f = (_e$target$files = e.target.files) === null || _e$target$files === void 0 ? void 0 : _e$target$files[0];
-    if (!f) return;
-    var url = URL.createObjectURL(f);
-    // Load to get real dimensions
-    var img = new Image();
-    img.onload = () => {
-      upd({
-        fileName: f.name,
-        fileSize: f.size,
-        imageUrl: url,
-        iw: img.naturalWidth,
-        ih: img.naturalHeight
-      });
+    var files = e.target.files;
+    if (!files || files.length === 0) return;
+    var urls = [];
+    var totalLoaded = 0;
+    var count = files.length;
+    var loadOne = function(f, fi) {
+      var ext = f.name.split('.').pop().toLowerCase();
+      var isTGA = ext === 'tga';
+      var loadImg = function(url) {
+        var img = new Image();
+        img.onload = function() {
+          urls.push({
+            url: url,
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            format: f.name.split('.').pop() || 'unknown',
+            fileName: f.name,
+            fileSize: f.size
+          });
+          totalLoaded++;
+          if (totalLoaded === count) {
+            upd({
+              fileName: count === 1 ? f.name : count + ' files',
+              fileSize: files[0].size,
+              imageUrl: urls[0].url,
+              images: urls,
+              iw: urls[0].width,
+              ih: urls[0].height
+            });
+          }
+        };
+        img.onerror = function() {
+          totalLoaded++;
+          if (totalLoaded >= count) {
+            upd({
+              fileName: count + ' files (' + (count - urls.length) + ' failed)',
+              images: urls
+            });
+          }
+        };
+        img.src = url;
+      };
+      if (isTGA) {
+        decodeTGA(f).then(function(pngUrl) {
+          loadImg(pngUrl);
+        }).catch(function() {
+          totalLoaded++;
+          if (totalLoaded >= count) {
+            upd({
+              fileName: count + ' files (' + (count - urls.length) + ' failed)',
+              images: urls
+            });
+          }
+        });
+      } else {
+        loadImg(URL.createObjectURL(f));
+      }
     };
-    img.src = url;
+    for (var fi = 0; fi < count; fi++) {
+      loadOne(files[fi], fi);
+    }
   }, [upd]);
   return /*#__PURE__*/React.createElement(NodeShell, {
     id: id,
@@ -1286,48 +1558,69 @@ function ImageLoadNode(_ref6) {
   }, /*#__PURE__*/React.createElement("input", {
     ref: fileRef,
     type: "file",
-    accept: "image/*",
+    accept: "image/*,.tga,.tga,.TGA",
+    multiple: true,
     onChange: handleFile,
     style: {
       fontSize: 11,
       color: 'var(--text-secondary)'
     }
-  })), data.imageUrl ? /*#__PURE__*/React.createElement("div", {
+  })), data.images && data.images.length > 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
-      marginTop: 4
+      marginTop: 4,
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 3,
+      maxHeight: 150,
+      overflowY: 'auto',
+      maxWidth: 200
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      position: 'relative',
-      display: 'inline-block'
-    }
-  }, /*#__PURE__*/React.createElement("img", {
-    src: data.imageUrl,
-    className: "node-preview-img",
-    onDoubleClick: function onDoubleClick() {
-      setModalImg(data.imageUrl);
-    },
-    style: {
-      cursor: 'pointer'
-    },
-    title: "双击查看原图",
-    onError: function onError(e) {
-      return e.target.style.display = 'none';
-    }
-  })), /*#__PURE__*/React.createElement("div", {
+  }, data.images.map(function(imgObj, idx) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: idx,
+      style: {
+        flex: '0 0 calc(33.33% - 3px)',
+        aspectRatio: '1',
+        overflow: 'hidden',
+        borderRadius: 4,
+        border: '1px solid var(--border)',
+        cursor: 'pointer',
+        position: 'relative',
+        maxWidth: 65,
+        maxHeight: 65
+      },
+      onDoubleClick: function onDoubleClick() {
+        setModalImg(imgObj.url);
+        setModalIdx(idx);
+      },
+      title: (imgObj.fileName || '') + ' (' + (imgObj.width || '?') + '\u00D7' + (imgObj.height || '?') + ')'
+    }, /*#__PURE__*/React.createElement("img", {
+      src: imgObj.url,
+      style: {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        display: 'block'
+      },
+      onError: function onError(e) {
+        return e.target.style.display = 'none';
+      }
+    }));
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
       color: 'var(--text-muted)',
-      marginTop: 2
+      marginTop: 2,
+      width: '100%'
     }
-  }, data.fileName, " (", Math.round(data.fileSize / 1024), "KB) ", data.iw, "\xD7", data.ih)) : /*#__PURE__*/React.createElement("div", {
+  }, data.fileName, " (", data.images.length, " \u5F20)", " \u6700\u5927: ", data.iw, "\u00D7", data.ih)) : /*#__PURE__*/React.createElement("div", {
     className: "node-preview-placeholder",
     style: {
       marginTop: 4
     }
   }, "\u9009\u62E9\u672C\u5730\u56FE\u7247\u6587\u4EF6..."), /*#__PURE__*/React.createElement(OutH, {
-    id: "image",
-    label: "\u56FE\u7247",
+    id: "images",
+    label: "\u56FE\u7247\u5217\u8868",
     htype: "i",
     idx: 0,
     total: 1
@@ -1523,7 +1816,14 @@ function AIImageGenNode(_ref8) {
         });
       }
     }
-  }))))), /*#__PURE__*/React.createElement(OutH, {
+  }))))), data._status && React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: data._status.indexOf('\u274C') === 0 ? 'var(--accent-red)' : 'var(--accent-orange)',
+      marginTop: 4,
+      textAlign: 'center'
+    }
+  }, data._status), React.createElement(OutH, {
     id: "image",
     label: "\u751F\u6210\u56FE\u7247",
     htype: "i",
@@ -1624,7 +1924,14 @@ function AIVideoGenNode(_ref9) {
     value: "1080p"
   }, "1080p"), /*#__PURE__*/React.createElement("option", {
     value: "4K"
-  }, "4K"))))), /*#__PURE__*/React.createElement(OutH, {
+  }, "4K"))))), data._status && React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: data._status.indexOf('\u274C') === 0 ? 'var(--accent-red)' : 'var(--accent-orange)',
+      marginTop: 4,
+      textAlign: 'center'
+    }
+  }, data._status), React.createElement(OutH, {
     id: "video_url",
     label: "\u89C6\u9891\u5730\u5740",
     htype: "v",
@@ -2000,6 +2307,134 @@ function ImageSplitNode(_ref12) {
   }, "\u5206\u5272\u4E3A rows \xD7 cols \u5F20\u56FE\u7247"), /*#__PURE__*/React.createElement(OutH, {
     id: "images",
     label: "\u5206\u5272\u56FE\u7247\u5217\u8868",
+    htype: "i",
+    idx: 0,
+    total: 1
+  }));
+}
+
+// ═══ Channel Split Node ═══
+function ChannelSplitNode(_ref59) {
+  var id = _ref59.id,
+    data = _ref59.data,
+    selected = _ref59.selected;
+  var d = getDef('channelSplit');
+  var upd = useUpdateNodeData(id);
+  return /*#__PURE__*/React.createElement(NodeShell, {
+    id: id,
+    data: data,
+    selected: selected,
+    headerClass: "hdr-process",
+    icon: d.icon,
+    title: d.name
+  }, d.inputs.map((inp, i) => /*#__PURE__*/React.createElement(InH, {
+    key: inp.id,
+    id: inp.id,
+    label: inp.label,
+    htype: inp.htype,
+    idx: i,
+    total: d.inputs.length
+  })), d.outputs.map((out, i) => /*#__PURE__*/React.createElement(OutH, {
+    key: out.id,
+    id: out.id,
+    label: out.label,
+    htype: out.htype,
+    idx: i,
+    total: d.outputs.length
+  })));
+}
+
+// ═══ Channel Merge Node ═══
+function ChannelMergeNode(_ref60) {
+  var id = _ref60.id,
+    data = _ref60.data,
+    selected = _ref60.selected;
+  var d = getDef('channelMerge');
+  return /*#__PURE__*/React.createElement(NodeShell, {
+    id: id,
+    data: data,
+    selected: selected,
+    headerClass: "hdr-process",
+    icon: d.icon,
+    title: d.name
+  }, d.inputs.map((inp, i) => /*#__PURE__*/React.createElement(InH, {
+    key: inp.id,
+    id: inp.id,
+    label: inp.label,
+    htype: inp.htype,
+    idx: i,
+    total: d.inputs.length
+  })), /*#__PURE__*/React.createElement(OutH, {
+    id: "image",
+    label: "\u5408\u5E76\u56FE\u7247",
+    htype: "i",
+    idx: 0,
+    total: 1
+  }));
+}
+
+// ═══ Black Background to Alpha Node ═══
+function BlackBgToAlphaNode(_ref61) {
+  var id = _ref61.id,
+    data = _ref61.data,
+    selected = _ref61.selected;
+  var d = getDef('blackBgToAlpha');
+  var upd = useUpdateNodeData(id);
+  return /*#__PURE__*/React.createElement(NodeShell, {
+    id: id,
+    data: data,
+    selected: selected,
+    headerClass: "hdr-process",
+    icon: d.icon,
+    title: d.name
+  }, /*#__PURE__*/React.createElement(InH, {
+    id: "image",
+    label: "\u8F93\u5165\u56FE\u7247",
+    htype: "i",
+    idx: 0,
+    total: 3
+  }), /*#__PURE__*/React.createElement(InH, {
+    id: "threshold",
+    label: "\u9ED1\u8272\u9608\u503C",
+    htype: "n",
+    idx: 1,
+    total: 3
+  }), /*#__PURE__*/React.createElement(InH, {
+    id: "feather",
+    label: "\u7FBD\u5316\u5E45\u5EA6",
+    htype: "n",
+    idx: 2,
+    total: 3
+  }), /*#__PURE__*/React.createElement("div", { style: { padding: '4px 0' } },
+    /*#__PURE__*/React.createElement("div", { className: "node-field" },
+      /*#__PURE__*/React.createElement("label", null, "\u9ED1\u8272\u9608\u503C"),
+      /*#__PURE__*/React.createElement("input", {
+        type: "text", inputMode: "numeric", pattern: "[0-9]*",
+        value: data.threshold != null ? data.threshold : '',
+        placeholder: "30",
+        onChange: function(e) {
+          var v = e.target.value;
+          if (v === '') upd({ threshold: '' });
+          else { var n = Number(v); if (!isNaN(n)) upd({ threshold: n }); }
+        }
+      })
+    ),
+    /*#__PURE__*/React.createElement("div", { className: "node-field" },
+      /*#__PURE__*/React.createElement("label", null, "\u7FBD\u5316\u5E45\u5EA6"),
+      /*#__PURE__*/React.createElement("input", {
+        type: "text", inputMode: "numeric", pattern: "[0-9]*",
+        value: data.feather != null ? data.feather : '',
+        placeholder: "5",
+        onChange: function(e) {
+          var v = e.target.value;
+          if (v === '') upd({ feather: '' });
+          else { var n = Number(v); if (!isNaN(n)) upd({ feather: n }); }
+        }
+      })
+    )
+  ), /*#__PURE__*/React.createElement(OutH, {
+    id: "image",
+    label: "\u6298\u56FE\u7ED3\u679C",
     htype: "i",
     idx: 0,
     total: 1
@@ -3010,23 +3445,85 @@ function AppInputNode(_ref24) {
       );
     } else if (it === 'image' || it === 'video') {
       // 图片/视频：文件加载按钮 + 预览
-      var acceptType = it === 'image' ? 'image/*' : 'video/*';
+      var acceptType = it === 'image' ? 'image/*,.tga,.tga,.TGA' : 'video/*';
+      var isMultiImage = it === 'image';
       var fid = 'file-'+id;
       children.push(
         React.createElement("div", { className: "node-field", style: { marginTop: 4 }, key: "defaultVal" },
           React.createElement("label", null, "\u52A0\u8F7D\u6587\u4EF6"),
-          React.createElement("input", { type: "file", "data-field": "defaultValue", accept: acceptType, id: fid, onChange: function(e) {
-            var f = e.target.files && e.target.files[0];
-            if(!f) return;
-            var url = URL.createObjectURL(f);
-            upd({ defaultValue: url, fileName: f.name, fileSize: f.size });
-            // Also store to global cache so mini-app view can access it
-            if(!_nodeCache[id]) _nodeCache[id]={};
-            _nodeCache[id].defaultValue=url;
-            _nodeCache[id].fileName=f.name;
-            _nodeCache[id].fileSize=f.size;
+          React.createElement("input", { type: "file", "data-field": "defaultValue", accept: acceptType, multiple: isMultiImage, id: fid, onChange: function(e) {
+            var files = e.target.files;
+            if(!files || files.length === 0) return;
+            if (it === 'image' && files.length > 1) {
+              // Multiple images
+              var urls = [];
+              var totalLoaded = 0;
+              var count = files.length;
+              for (var fi = 0; fi < count; fi++) {
+                (function(f) {
+                  var ext = f.name.split('.').pop().toLowerCase();
+                  var isTGA = ext === 'tga';
+                  var onImgLoad = function(url) {
+                    var img = new Image();
+                    img.onload = function() {
+                      urls.push({ url: url, width: img.naturalWidth, height: img.naturalHeight, format: f.name.split('.').pop() || 'unknown', fileName: f.name, fileSize: f.size });
+                      totalLoaded++;
+                      if (totalLoaded === count) {
+                        upd({ defaultValue: url, fileName: count + ' files', fileSize: files[0].size, images: urls });
+                        if(!_nodeCache[id]) _nodeCache[id]={};
+                        _nodeCache[id].defaultValue = url;
+                        _nodeCache[id].fileName = count + ' files';
+                        _nodeCache[id].fileSize = files[0].size;
+                        _nodeCache[id].images = urls;
+                      }
+                    };
+                    img.onerror = function() {
+                      totalLoaded++;
+                      if (totalLoaded >= count) {
+                        upd({ fileName: count + ' files', images: urls });
+                      }
+                    };
+                    img.src = url;
+                  };
+                  if (isTGA) {
+                    decodeTGA(f).then(function(pngUrl) { onImgLoad(pngUrl); }).catch(function() {
+                      totalLoaded++;
+                      if (totalLoaded >= count) { upd({ fileName: count + ' files', images: urls }); }
+                    });
+                  } else {
+                    onImgLoad(URL.createObjectURL(f));
+                  }
+                })(files[fi]);
+              }
+            } else {
+              var f = files[0];
+              if(!f) return;
+              var ext = f.name.split('.').pop().toLowerCase();
+              var _isTGA = ext === 'tga';
+              var onSingleLoad = function(url) {
+                upd({ defaultValue: url, fileName: f.name, fileSize: f.size, images: null });
+                if(!_nodeCache[id]) _nodeCache[id]={};
+                _nodeCache[id].defaultValue=url;
+                _nodeCache[id].fileName=f.name;
+                _nodeCache[id].fileSize=f.size;
+                _nodeCache[id].images = null;
+              };
+              if (_isTGA) {
+                decodeTGA(f).then(function(pngUrl) { onSingleLoad(pngUrl); }).catch(function() { onSingleLoad(URL.createObjectURL(f)); });
+              } else {
+                onSingleLoad(URL.createObjectURL(f));
+              }
+            }
           }, style: { fontSize: 11, color: 'var(--text-secondary)' } }),
-          data.defaultValue && it === 'image' ?
+          data.images && data.images.length > 1 ?
+            React.createElement("div", { style: { marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 3, maxHeight: 150, overflowY: 'auto', maxWidth: 200 } },
+              data.images.map(function(imgObj, idx) {
+                return React.createElement("div", { key: idx, style: { flex: '0 0 calc(33.33% - 3px)', aspectRatio: '1', overflow: 'hidden', borderRadius: 4, border: '1px solid var(--border)', cursor: 'pointer', position: 'relative', maxWidth: 65, maxHeight: 65 }, onDoubleClick: function() { setAppModalImg(imgObj.url); }, title: (imgObj.fileName || '') + ' (' + (imgObj.width || '?') + '\u00D7' + (imgObj.height || '?') + ')' },
+                  React.createElement("img", { src: imgObj.url, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }, onError: function(e) { e.target.style.display = 'none'; } })
+                );
+              })
+            )
+          : data.defaultValue && it === 'image' ?
             React.createElement("img", { src: data.defaultValue, className: "node-preview-img", onDoubleClick: function() { setAppModalImg(data.defaultValue); }, style: { cursor: 'pointer', marginTop: 6 }, title: "\u53CC\u51FB\u67E5\u770B\u539F\u56FE", onError: function(e) { e.target.style.display = 'none'; } })
           : data.defaultValue && it === 'video' ?
             React.createElement("video", { src: data.defaultValue, controls: true, className: "node-preview-img", style: { marginTop: 6 } })
@@ -3088,6 +3585,9 @@ var nodeTypes = {
   imageCrop: ImageCropNode,
   imageGrid: ImageGridNode,
   imageSplit: ImageSplitNode,
+  channelSplit: ChannelSplitNode,
+  channelMerge: ChannelMergeNode,
+  blackBgToAlpha: BlackBgToAlphaNode,
   videoToFrames: VideoToFramesNode,
   videoCompose: VideoComposeNode,
   imagePreview: ImagePreviewNode,
@@ -3421,19 +3921,97 @@ function EdgeContextMenu(_ref31) {
 /* ═══════════════════════════════════════════
    Execution Engine
    ═══════════════════════════════════════════ */
-function simImageGen(prompt, neg, w, h, seed) {
-  var s = seed && seed > 0 ? seed : Math.floor(Math.random() * 9999);
-  return {
-    url: "https://picsum.photos/seed/".concat(s, "/").concat(w || 1024, "/").concat(h || 768),
-    width: w || 1024,
-    height: h || 768,
-    format: 'jpeg'
-  };
+function callImageGenAPI(apiUrl, apiKey, prompt, neg, w, h, seed) {
+  // OpenAI-compatible image generation endpoint
+  // Falls back to placeholder if API is not configured
+  if (!apiUrl || !apiKey) {
+    var s = seed && seed > 0 ? seed : Math.floor(Math.random() * 9999);
+    return Promise.resolve({
+      url: "https://picsum.photos/seed/".concat(s, "/").concat(w || 1024, "/").concat(h || 768),
+      width: w || 1024,
+      height: h || 768,
+      format: 'jpeg'
+    });
+  }
+  var base = apiUrl.replace(/\/+$/, '');
+  var fullPrompt = prompt;
+  if (neg) fullPrompt = prompt + ' ### negative: ' + neg;
+  var url = base + '/images/generations';
+  var body = JSON.stringify({
+    model: 'dall-e-3',
+    prompt: fullPrompt,
+    n: 1,
+    size: (w || 1024) + 'x' + (h || 768),
+    response_format: 'url'
+  });
+  return fetchAPI(url, apiKey, body, 120000).then(function (data) {
+    var img = data && data.data && data.data[0];
+    if (!img || !img.url) throw new Error('No image URL in response');
+    return {
+      url: img.url,
+      width: w || 1024,
+      height: h || 768,
+      format: 'png'
+    };
+  });
 }
-function simVideoGen() {
-  return {
-    url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+function callVideoGenAPI(apiUrl, apiKey, prompt, duration, resolution) {
+  // Video generation — tries OpenAI-compatible endpoint, falls back to placeholder
+  if (!apiUrl || !apiKey) {
+    return Promise.resolve({
+      url: 'https://www.w3schools.com/html/mov_bbb.mp4'
+    });
+  }
+  var base = apiUrl.replace(/\/+$/, '');
+  var url = base + '/videos/generations';
+  var body = JSON.stringify({
+    model: 'sora-2',
+    prompt: prompt,
+    duration: duration || 5,
+    resolution: resolution || '1080p'
+  });
+  return fetchAPI(url, apiKey, body, 300000).then(function (data) {
+    var vid = data && data.data && data.data[0];
+    if (!vid || !vid.url) throw new Error('No video URL in response');
+    return { url: vid.url };
+  });
+}
+
+// ── Fetch helper with CORS proxy fallback ──
+function fetchAPI(url, apiKey, body, timeoutMs) {
+  var headers = {
+    'Authorization': 'Bearer ' + apiKey,
+    'Content-Type': 'application/json'
   };
+  var opts = {
+    method: 'POST',
+    headers: headers,
+    body: body
+  };
+
+  function doFetch(targetUrl) {
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs);
+    opts.signal = controller.signal;
+    return fetch(targetUrl, opts).then(function (r) {
+      clearTimeout(timeoutId);
+      if (!r.ok) return r.text().then(function (t) { throw new Error('API error ' + r.status + ': ' + t); });
+      return r.json();
+    }).catch(function (e) {
+      clearTimeout(timeoutId);
+      throw e;
+    });
+  }
+
+  // Try direct first, fall back to CORS proxy on network errors
+  return doFetch(url).catch(function (e) {
+    if (e instanceof TypeError || e.message === 'Failed to fetch') {
+      // CORS or network error — retry through CORS proxy
+      var proxyUrl = 'https://corsproxy.io/' + url;
+      return doFetch(proxyUrl);
+    }
+    throw e;
+  });
 }
 
 // ── Auto-detect video FPS via requestVideoFrameCallback ──
@@ -3705,6 +4283,197 @@ function cropImage(srcUrl, mode, data) {
   });
 }
 
+// ── Resize image to target dimensions via canvas ──
+function resizeImage(srcUrl, targetW, targetH) {
+  return new Promise(resolve => {
+    var img = new Image();
+    img.onload = () => {
+      var canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      var ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      resolve({
+        url: canvas.toDataURL('image/png'),
+        width: targetW,
+        height: targetH,
+        format: 'png'
+      });
+    };
+    img.onerror = () => resolve(null);
+    img.src = srcUrl;
+  });
+}
+
+// ── Split image into RGBA channel grayscale images via canvas ──
+function splitChannels(srcUrl, srcW, srcH) {
+  return new Promise(resolve => {
+    var img = new Image();
+    img.onload = () => {
+      var w = img.naturalWidth || srcW || 256;
+      var h = img.naturalHeight || srcH || 256;
+      // Draw full image onto a source canvas
+      var srcCanvas = document.createElement('canvas');
+      srcCanvas.width = w;
+      srcCanvas.height = h;
+      var srcCtx = srcCanvas.getContext('2d');
+      srcCtx.drawImage(img, 0, 0);
+      var imageData = srcCtx.getImageData(0, 0, w, h);
+      var data = imageData.data;
+      function extractChannel(chIdx) {
+        var cCanvas = document.createElement('canvas');
+        cCanvas.width = w;
+        cCanvas.height = h;
+        var cCtx = cCanvas.getContext('2d');
+        var cImageData = cCtx.createImageData(w, h);
+        var cData = cImageData.data;
+        for (var pi = 0; pi < data.length / 4; pi++) {
+          var val = data[pi * 4 + chIdx];
+          cData[pi * 4] = val;     // R
+          cData[pi * 4 + 1] = val; // G
+          cData[pi * 4 + 2] = val; // B
+          cData[pi * 4 + 3] = 255; // A
+        }
+        cCtx.putImageData(cImageData, 0, 0);
+        return {
+          url: cCanvas.toDataURL('image/png'),
+          width: w,
+          height: h,
+          format: 'png'
+        };
+      }
+      resolve({
+        r: extractChannel(0),
+        g: extractChannel(1),
+        b: extractChannel(2),
+        a: extractChannel(3)
+      });
+    };
+    img.onerror = () => resolve(null);
+    img.src = srcUrl;
+  });
+}
+
+// ── Merge channel images into a single RGBA image via canvas ──
+function mergeChannels(channelImgs) {
+  return new Promise(resolve => {
+    if (!channelImgs || channelImgs.length < 1 || channelImgs.length > 4) return resolve(null);
+    // Load all channel images first
+    var loaded = 0;
+    var total = channelImgs.length;
+    var imgs = [];
+    var targetW, targetH;
+    for (var mi = 0; mi < total; mi++) {
+      (function(idx) {
+        var img = new Image();
+        img.onload = () => {
+          if (!targetW) { targetW = img.naturalWidth || channelImgs[idx].width || 256; }
+          if (!targetH) { targetH = img.naturalHeight || channelImgs[idx].height || 256; }
+          imgs[idx] = img;
+          loaded++;
+          if (loaded === total) {
+            // Render each input image to a canvas and get pixel data
+            var canvases = [];
+            for (var si = 0; si < total; si++) {
+              var c = document.createElement('canvas');
+              c.width = targetW;
+              c.height = targetH;
+              var cx = c.getContext('2d');
+              cx.drawImage(imgs[si], 0, 0, targetW, targetH);
+              canvases.push(cx.getImageData(0, 0, targetW, targetH));
+            }
+            var outCanvas = document.createElement('canvas');
+            outCanvas.width = targetW;
+            outCanvas.height = targetH;
+            var outCtx = outCanvas.getContext('2d');
+            var outImageData = outCtx.createImageData(targetW, targetH);
+            var outData = outImageData.data;
+            for (var pi = 0; pi < targetW * targetH; pi++) {
+              var off = pi * 4;
+              var collected = [];
+              for (var si = 0; si < total; si++) {
+                var d = canvases[si].data;
+                var r = d[off];
+                var g_ = d[off + 1];
+                var b_ = d[off + 2];
+                // Each input image represents one channel — use luminance
+                // to robustly extract a single value even with slight
+                // compression/compositing differences between R/G/B.
+                var lum = Math.round((r + g_ + b_) / 3);
+                collected.push(lum);
+              }
+              // Fill output pixel: take first 4 collected channels
+              outData[off] = collected[0] || 0;
+              outData[off + 1] = collected[1] !== undefined ? collected[1] : 0;
+              outData[off + 2] = collected[2] !== undefined ? collected[2] : 0;
+              outData[off + 3] = collected[3] !== undefined ? collected[3] : 255;
+            }
+            outCtx.putImageData(outImageData, 0, 0);
+            resolve({
+              url: outCanvas.toDataURL('image/png'),
+              width: targetW,
+              height: targetH,
+              format: 'png'
+            });
+          }
+        };
+        img.onerror = () => {
+          loaded++;
+          if (loaded === total) resolve(null);
+        };
+        img.src = channelImgs[idx].url;
+      })(mi);
+    }
+  });
+}
+
+// ── Black background to alpha via canvas ──
+// Pixels with brightness <= threshold become transparent;
+// brightness is scaled to alpha in the feather band [threshold, threshold+feather].
+function blackBgToAlpha(srcUrl, threshold, feather) {
+  return new Promise(function (resolve) {
+    var img = new Image();
+    img.onload = function () {
+      var w = img.naturalWidth || 256;
+      var h = img.naturalHeight || 256;
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      var ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      var imageData = ctx.getImageData(0, 0, w, h);
+      var d = imageData.data;
+      var t = Math.max(0, Math.min(255, threshold || 30));
+      var f = Math.max(0, Math.min(255, feather || 5));
+      for (var pi = 0; pi < w * h; pi++) {
+        var off = pi * 4;
+        var r = d[off], g = d[off + 1], b = d[off + 2];
+        // Perceived brightness (luminance)
+        var lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        var alpha;
+        if (lum <= t) {
+          alpha = 0;
+        } else if (f > 0 && lum <= t + f) {
+          alpha = Math.round((lum - t) / f * 255);
+        } else {
+          alpha = 255;
+        }
+        d[off + 3] = alpha;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      resolve({
+        url: c.toDataURL('image/png'),
+        width: w,
+        height: h,
+        format: 'png'
+      });
+    };
+    img.onerror = function () { resolve(null); };
+    img.src = srcUrl;
+  });
+}
+
 // ── Compose image list into a grid (rows × cols) via canvas ──
 function composeImageGrid(images, rows, cols) {
   return new Promise(/*#__PURE__*/function () {
@@ -3913,12 +4682,21 @@ function _executeWorkflow() {
               break;
             }
           case 'imageLoad':
-            outs.image = node.data.imageUrl ? {
-              url: node.data.imageUrl,
-              width: node.data.iw || 0,
-              height: node.data.ih || 0,
-              format: ((_node$data$fileName = node.data.fileName) === null || _node$data$fileName === void 0 ? void 0 : _node$data$fileName.split('.').pop()) || 'unknown'
-            } : null;
+            outs.images = node.data.images && node.data.images.length > 0
+              ? node.data.images.map(function(img) {
+                  return {
+                    url: img.url,
+                    width: img.width || 0,
+                    height: img.height || 0,
+                    format: img.format || ((_node$data$fileName$2 = img.fileName) === null || _node$data$fileName$2 === void 0 ? void 0 : _node$data$fileName$2.split('.').pop()) || 'unknown'
+                  };
+                })
+              : (node.data.imageUrl ? [{
+                  url: node.data.imageUrl,
+                  width: node.data.iw || 0,
+                  height: node.data.ih || 0,
+                  format: ((_node$data$fileName = node.data.fileName) === null || _node$data$fileName === void 0 ? void 0 : _node$data$fileName.split('.').pop()) || 'unknown'
+                }] : []);
             nodeMap[nid]._outputType = 'image';
             break;
           case 'videoLoad':
@@ -3936,26 +4714,39 @@ function _executeWorkflow() {
               var w = numOr(inpData.width, node.data.width, 1024);
               var h = numOr(inpData.height, node.data.height, 768);
               var seed = numOr(inpData.seed, node.data.seed, -1);
-              yield new Promise(r => setTimeout(r, 500 + Math.random() * 800));
-              var result = simImageGen(prompt, neg, w, h, seed);
+              var apiUrl = node.data.api_url || '';
+              var apiKey = node.data.api_key || '';
+              setNodes(nds => nds.map(n => n.id === nid ? _objectSpread(_objectSpread({}, n), {}, {
+                data: _objectSpread(_objectSpread({}, n.data), {}, { _status: '生成中...' })
+              }) : n));
+              var result = yield callImageGenAPI(apiUrl, apiKey, prompt, neg, w, h, seed);
               outs.image = result;
               nodeMap[nid]._outputType = 'image';
               setNodes(nds => nds.map(n => n.id === nid ? _objectSpread(_objectSpread({}, n), {}, {
                 data: _objectSpread(_objectSpread({}, n.data), {}, {
-                  _res: result
+                  _res: result,
+                  _status: ''
                 })
               }) : n));
               break;
             }
           case 'aiVideoGen':
             {
-              yield new Promise(r => setTimeout(r, 400 + Math.random() * 600));
-              var _result = simVideoGen();
+              var _prompt = inpData.prompt || node.data.prompt || '';
+              var _duration = numOr(inpData.duration, node.data.duration, 5);
+              var _resolution = inpData.resolution || node.data.resolution || '1080p';
+              var _apiUrl = node.data.api_url || '';
+              var _apiKey = node.data.api_key || '';
+              setNodes(nds => nds.map(n => n.id === nid ? _objectSpread(_objectSpread({}, n), {}, {
+                data: _objectSpread(_objectSpread({}, n.data), {}, { _status: '生成中...' })
+              }) : n));
+              var _result = yield callVideoGenAPI(_apiUrl, _apiKey, _prompt, _duration, _resolution);
               outs.video_url = _result;
               nodeMap[nid]._outputType = 'video';
               setNodes(nds => nds.map(n => n.id === nid ? _objectSpread(_objectSpread({}, n), {}, {
                 data: _objectSpread(_objectSpread({}, n.data), {}, {
-                  _vres: _result
+                  _vres: _result,
+                  _status: ''
                 })
               }) : n));
               break;
@@ -4015,12 +4806,8 @@ function _executeWorkflow() {
               for (var ri = 0; ri < images.length; ri++) {
                 var _img = images[ri];
                 if (_img && _img.url) {
-                  results.push({
-                    url: "https://picsum.photos/seed/".concat(Date.now()+ri, "/").concat(_w2, "/").concat(_h2),
-                    width: _w2,
-                    height: _h2,
-                    format: _img.format || 'jpeg'
-                  });
+                  var resized = yield resizeImage(_img.url, _w2, _h2);
+                  if (resized) results.push(resized);
                 }
               }
               if (results.length > 0) {
@@ -4088,6 +4875,102 @@ function _executeWorkflow() {
               if (allImgs.length > 0) {
                 outs.images = allImgs;
                 nodeMap[nid]._outputType = 'images';
+              }
+              break;
+            }
+          case 'channelSplit':
+            {
+              var images = inpData.image;
+              if (!Array.isArray(images)) images = images ? [images] : [];
+              var rResults = [],
+                gResults = [],
+                bResults = [],
+                aResults = [];
+              for (var csi = 0; csi < images.length; csi++) {
+                var _imgCS = images[csi];
+                if (_imgCS && _imgCS.url) {
+                  var channels = yield splitChannels(_imgCS.url, _imgCS.width, _imgCS.height);
+                  if (channels) {
+                    rResults.push(channels.r);
+                    gResults.push(channels.g);
+                    bResults.push(channels.b);
+                    aResults.push(channels.a);
+                  }
+                }
+              }
+              if (rResults.length > 0) {
+                outs.r = rResults.length === 1 ? rResults[0] : rResults;
+                outs.g = gResults.length === 1 ? gResults[0] : gResults;
+                outs.b = bResults.length === 1 ? bResults[0] : bResults;
+                outs.a = aResults.length === 1 ? aResults[0] : aResults;
+                nodeMap[nid]._outputType = 'channels';
+              }
+              break;
+            }
+          case 'channelMerge':
+            {
+              // Collect channel values grouped by position index.
+              // Each handle maps to a channel slot: 0=R, 1=G, 2=B, 3=A.
+              // When inputs are arrays (from channelSplit on multiple images),
+              // channels at the same array position belong to the same source image.
+              var channelByPos = {};   // { pos: [R_val, G_val, B_val, A_val] }
+              var handleOrder = ['channel_r', 'channel_g', 'channel_b', 'channel_a',
+                                 'channels_a', 'channels_b'];
+              var handleSlot = {'channel_r':0,'channel_g':1,'channel_b':2,'channel_a':3,
+                                'channels_a':3,'channels_b':2};
+              for (var hi = 0; hi < handleOrder.length; hi++) {
+                var hid = handleOrder[hi];
+                var slot = handleSlot[hid];
+                if (slot === undefined) continue;
+                var key = nid + '::' + hid;
+                var srcs = incoming[key] || [];
+                for (var si = 0; si < srcs.length; si++) {
+                  var srcNode = nodeMap[srcs[si].src];
+                  if (srcNode) {
+                    var v = srcNode.outputs[srcs[si].sh];
+                    if (v !== undefined) {
+                      var arr = Array.isArray(v) ? v : [v];
+                      for (var vi = 0; vi < arr.length; vi++) {
+                        if (!channelByPos[vi]) channelByPos[vi] = [];
+                        channelByPos[vi][slot] = arr[vi];
+                      }
+                    }
+                  }
+                }
+              }
+              // Merge each position group into one image
+              var mergedResults = [];
+              var posKeys = Object.keys(channelByPos).sort(function(a,b){return Number(a)-Number(b);});
+              for (var pi = 0; pi < posKeys.length; pi++) {
+                var group = channelByPos[posKeys[pi]];
+                // Compact: only keep defined slots (handles missing channels gracefully)
+                var compact = [];
+                for (var ci = 0; ci < 4; ci++) {
+                  if (group[ci] !== undefined) compact.push(group[ci]);
+                }
+                if (compact.length >= 1 && compact.length <= 4) {
+                  var merged = yield mergeChannels(compact);
+                  if (merged) mergedResults.push(merged);
+                }
+              }
+              if (mergedResults.length > 0) {
+                outs.image = mergedResults.length === 1 ? mergedResults[0] : mergedResults;
+                nodeMap[nid]._outputType = mergedResults.length === 1 ? 'image' : 'images';
+              }
+              break;
+            }
+          case 'blackBgToAlpha':
+            {
+              var img = inpData.image;
+              if (!img) break;
+              if (Array.isArray(img)) img = img[0];
+              if (!img || !img.url) break;
+              var threshold = numOr(inpData.threshold, node.data.threshold, 30);
+              var feather = numOr(inpData.feather, node.data.feather, 5);
+              var result = yield blackBgToAlpha(img.url, threshold, feather);
+              if (result) {
+                outs.image = result;
+                nodeMap[nid]._outputType = 'image';
               }
               break;
             }
@@ -4394,25 +5277,33 @@ function _executeWorkflow() {
               if (node.data.inputType === 'number') { var num = Number(val); val = isNaN(num) ? 0 : num; }
               else if (node.data.inputType === 'boolean') { val = val === 'true' || val === true; }
               else if (node.data.inputType === 'image') {
-                val = val || '';
-                if (val) {
-                  // Build image object compatible with imageLoad output format
-                  var cachedImg = window._nodeCache && window._nodeCache[nid];
-                  var fileName = (cachedImg && cachedImg.fileName) || node.data.fileName || '';
-                  var format = fileName.split('.').pop() || 'unknown';
-                  var iw = 0, ih = 0;
-                  try {
-                    var dims = yield new Promise(function(resolve) {
-                      var img = new Image();
-                      img.onload = function() { resolve({w: img.naturalWidth, h: img.naturalHeight}); };
-                      img.onerror = function() { resolve({w: 0, h: 0}); };
-                      img.src = val;
-                    });
-                    iw = dims.w; ih = dims.h;
-                  } catch(e) {}
-                  val = { url: val, width: iw, height: ih, format: format };
+                // Check cache for multiple images first
+                var cachedImgMulti = window._nodeCache && window._nodeCache[nid] && window._nodeCache[nid].images;
+                if (cachedImgMulti && cachedImgMulti.length > 1) {
+                  val = cachedImgMulti.map(function(ci) {
+                    return { url: ci.url, width: ci.width || 0, height: ci.height || 0, format: ci.format || ci.fileName.split('.').pop() || 'unknown' };
+                  });
                 } else {
-                  val = null;
+                  val = val || '';
+                  if (val) {
+                    // Build image object compatible with imageLoad output format
+                    var cachedImg = window._nodeCache && window._nodeCache[nid];
+                    var fileName = (cachedImg && cachedImg.fileName) || node.data.fileName || '';
+                    var format = fileName.split('.').pop() || 'unknown';
+                    var iw = 0, ih = 0;
+                    try {
+                      var dims = yield new Promise(function(resolve) {
+                        var img = new Image();
+                        img.onload = function() { resolve({w: img.naturalWidth, h: img.naturalHeight}); };
+                        img.onerror = function() { resolve({w: 0, h: 0}); };
+                        img.src = val;
+                      });
+                      iw = dims.w; ih = dims.h;
+                    } catch(e) {}
+                    val = { url: val, width: iw, height: ih, format: format };
+                  } else {
+                    val = null;
+                  }
                 }
               }
               else if (node.data.inputType === 'video') {
@@ -4541,6 +5432,11 @@ case 'ifCond':
       } catch (err) {
         console.error('Node error:', nid, err);
         setStatus(nid, 'error');
+        setNodes(nds => nds.map(n => n.id === nid ? _objectSpread(_objectSpread({}, n), {}, {
+          data: _objectSpread(_objectSpread({}, n.data), {}, {
+            _status: '❌ ' + (err.message || String(err)).slice(0, 80)
+          })
+        }) : n));
       }
       nodeMap[nid].outputs = outs;
       nodeMap[nid].done = true;
@@ -4705,6 +5601,10 @@ function App() {
 
   // ── Node right-click context menu ──
   var onNodeCtx = useCallback((e, node) => {
+    // If right-clicking on an image (preview/output), let browser show native "Save image as..." menu
+    if (e.target.tagName === 'IMG' || e.target.closest('img')) {
+      return;
+    }
     e.preventDefault();
     setNodeCtxMenu({
       x: e.clientX,
@@ -5180,6 +6080,7 @@ function App() {
     onEdgeContextMenu: onEdgeCtx,
     nodeTypes: nodeTypes,
     fitView: true,
+    minZoom: 0.1,
     selectionOnDrag: true,
     selectionMode: "partial",
     panOnDrag: [1, 2],
@@ -5648,7 +6549,7 @@ function loadWorkflowJSON(jsonStr, filename) {
 // ── Build overlay DOM ──
 var overlay=document.createElement('div');overlay.id='wf-overlay';document.body.appendChild(overlay);
 var settings=document.createElement('div');settings.id='wf-settings';document.body.appendChild(settings);
-var lightbox=document.createElement('div');lightbox.id='wf-lightbox';lightbox.onclick=function(){lightbox.classList.remove('show');};document.body.appendChild(lightbox);
+var lightbox=document.createElement('div');lightbox.id='wf-lightbox';lightbox.className='wf-lightbox';lightbox.onclick=function(){lightbox.classList.remove('show');};document.body.appendChild(lightbox);
 
 // ── State sync via polling ──
 function syncState(){
@@ -5740,14 +6641,26 @@ function renderAppView(){
     }else if(d.inputType==='number'){
       h+='<input type="number" value="'+(d.defaultValue||0)+'" oninput="window.__wf_updateVal(\''+inp.id+'\',this.value)">';
     }else if(d.inputType==='image'){
-      h+='<input type="file" accept="image/*" onchange="window.__wf_fileLoaded(\''+inp.id+'\',this)" style="font-size:12px">';
+      h+='<input type="file" accept="image/*,.tga,.TGA" multiple onchange="window.__wf_fileLoaded(\''+inp.id+'\',this)" style="font-size:12px">';
+      var showMulti = (d.images && d.images.length > 1) ? '' : ' style="display:none"';
       h+='<div class="wf-file-info" id="wf-info-'+inp.id+'"'+showInfo+'>'+
          '<span style="font-size:12px;color:var(--accent-green,#3fb950);margin-top:3px;display:inline-flex;align-items:center;gap:4px">'+
          '\u2714 '+esc(d.fileName||'')+
          (d.fileSize?' <span style="font-size:10px;color:var(--text-muted,#6e7681)">('+Math.round(d.fileSize/1024)+'KB)</span>':'')+
          '</span></div>';
-      h+='<div class="wf-file-preview" id="wf-preview-'+inp.id+'"'+showPreview+'>'+
-         '<img src="'+esc(d.defaultValue)+'" class="wf-output-img" style="max-width:100%;max-height:120px;border-radius:4px;margin-top:6px" ondblclick="window.__wf_showLightbox(this.src,this.title)" title="\u53CC\u51FB\u67E5\u770B\u539F\u56FE"></div>';
+      h+='<div class="wf-file-preview" id="wf-preview-'+inp.id+'"'+(d.images && d.images.length > 1 ? showMulti : showPreview)+'>';
+      if(d.images && d.images.length > 1){
+        h+='<div style="display:flex;flex-wrap:wrap;gap:4;width:100%;margin-top:6px;max-height:200px;overflow-y:auto">';
+        for(var mi=0; mi<d.images.length; mi++){
+          var ii=d.images[mi];
+          h+='<div style="flex:0 0 calc(16.66% - 4px);aspect-ratio:1;overflow:hidden;border-radius:4px;border:1px solid var(--border,#30363d)">'+
+             '<img src="'+esc(ii.url)+'" style="width:100%;height:100%;object-fit:cover;display:block;cursor:pointer" ondblclick="window.__wf_showLightbox(\''+esc(ii.url)+'\',\''+esc(ii.fileName||'')+'\')" title="'+esc(ii.fileName||'')+'"></div>';
+        }
+        h+='</div>';
+      } else {
+        h+='<img src="'+esc(d.defaultValue)+'" class="wf-output-img" style="max-width:100%;max-height:120px;border-radius:4px;margin-top:6px" ondblclick="window.__wf_showLightbox(this.src,this.title)" title="双击查看原图">';
+      }
+      h+='</div>';
     }else if(d.inputType==='video'){
       h+='<input type="file" accept="video/*" onchange="window.__wf_fileLoaded(\''+inp.id+'\',this)" style="font-size:12px">';
       h+='<div class="wf-file-info" id="wf-info-'+inp.id+'"'+showInfo+'>'+
@@ -5800,7 +6713,7 @@ function renderAppView(){
         var gimg = imgArray[gi];
         if (gimg && gimg.url) {
           var glabel = (gimg.width||'')+'\u00D7'+(gimg.height||'')+(gimg.format?' '+gimg.format:'');
-          h+='<img src="'+esc(gimg.url)+'" class="wf-output-img" ondblclick="window.__wf_showLightbox(this.src,this.title)" onerror="this.style.display=\'none\'" title="'+esc(glabel)+' \u2014 \u53CC\u51FB\u67E5\u770B\u539F\u56FE">';
+          h+='<img src="'+esc(gimg.url)+'" class="wf-output-img" ondblclick="window.__wf_showLightbox(this.src,this.title)" onerror="this.style.display=\'none\'" title="'+esc(glabel)+' \u2014 \u53CC\u51FB\u67E5\u770B\u539F\u56FE" style="cursor:pointer">';
         }
       }
       h+='</div></div>';
@@ -5814,7 +6727,7 @@ function renderAppView(){
         h+='<video src="'+esc(directUrl)+'" controls style="max-width:100%;max-height:300px;border-radius:6px;display:block"></video></div>';
       } else {
         h+='<div class="wf-output-card"><div style="font-size:11px;color:var(--text-muted,#6e7681);margin-bottom:4px">'+esc(label)+'</div>';
-        h+='<img src="'+esc(directUrl)+'" class="wf-output-img" style="max-width:100%;max-height:300px;border-radius:6px;display:block" ondblclick="window.__wf_showLightbox(this.src,this.title)" onerror="this.style.display=\'none\'" title="'+esc(label)+' \u2014 \u53CC\u51FB\u67E5\u770B\u539F\u56FE"></div>';
+        h+='<img src="'+esc(directUrl)+'" class="wf-output-img" style="max-width:100%;max-height:300px;border-radius:6px;display:block;cursor:pointer" ondblclick="window.__wf_showLightbox(this.src,this.title)" onerror="this.style.display=\'none\'" title="'+esc(label)+' \u2014 \u53CC\u51FB\u67E5\u770B\u539F\u56FE"></div>';
       }
       return;
     }
@@ -5846,7 +6759,7 @@ function renderAppView(){
     else if (imgUrl) val = imgUrl;
 
     if (isImg && !isVid) {
-      h+='<img src="'+esc(val)+'" class="wf-output-img" style="max-width:100%;max-height:300px;border-radius:6px;display:block" ondblclick="window.__wf_showLightbox(this.src,this.title)" onerror="this.style.display=\'none\'" title="'+esc(label)+' \u2014 \u53CC\u51FB\u67E5\u770B\u539F\u56FE">';
+      h+='<img src="'+esc(val)+'" class="wf-output-img" style="max-width:100%;max-height:300px;border-radius:6px;display:block;cursor:pointer" ondblclick="window.__wf_showLightbox(this.src,this.title)" onerror="this.style.display=\'none\'" title="'+esc(label)+' \u2014 \u53CC\u51FB\u67E5\u770B\u539F\u56FE">';
     } else if (isVid) {
       h+='<video src="'+esc(val)+'" controls style="max-width:100%;max-height:300px;border-radius:6px;display:block"></video>';
     } else {
@@ -5939,8 +6852,10 @@ function getNodeData(nodeId){
       if(!dvInput && txtInputs.length>=3) dvInput = txtInputs[2];
       if(dvInput) d.defaultValue=dvInput.value||'';
     }
-    if(cached && cached.fileName) d.fileName = cached.fileName;
-    else if(el.dataset.wfFileName) d.fileName = el.dataset.wfFileName;
+    if(cached) {
+      if(cached.fileName) d.fileName = cached.fileName;
+      if(cached.images) d.images = cached.images;
+    } else if(el.dataset.wfFileName) d.fileName = el.dataset.wfFileName;
   }else{
     var dvInput2 = el.querySelector('.node-body input[type="number"]');
     if(!dvInput2 && txtInputs.length>=2) dvInput2 = txtInputs[1];
@@ -6058,42 +6973,104 @@ W.__wf_run=function(){
   }, 300);
 };
 W.__wf_fileLoaded=function(id, el){
-  var f = el.files && el.files[0];
-  if(!f) return;
-  var url = URL.createObjectURL(f);
-  if(!_nodeCache[id]) _nodeCache[id]={};
-  _nodeCache[id].defaultValue=url;
-  _nodeCache[id].fileName=f.name;
-  _nodeCache[id].fileSize=f.size;
-  // Update the React node element's dataset so getNodeData / executeWorkflow can read it
-  var nodeEl=document.querySelector('[data-id="'+id+'"]');
-  if(nodeEl){
-    nodeEl.dataset.wfFileUrl=url;
-    nodeEl.dataset.wfFileName=f.name;
-  }
-  // Update mini-app field in-place (don't re-render entire overlay — preserves file input state)
-  var infoEl = document.getElementById('wf-info-'+id);
-  var previewEl = document.getElementById('wf-preview-'+id);
-  if(infoEl){
-    infoEl.style.display = '';
-    var nameSpan = infoEl.querySelector('span');
-    if(nameSpan) {
-      var isVideo = el.accept && el.accept.indexOf('video') !== -1;
-      nameSpan.innerHTML = '\u2714 '+esc(f.name)+(f.size?' <span style="font-size:10px;color:var(--text-muted,#6e7681)">('+Math.round(f.size/1024)+'KB)</span>':'');
-    }
-  }
-  if(previewEl){
-    previewEl.style.display = '';
-    if(el.accept && el.accept.indexOf('video') !== -1){
-      previewEl.innerHTML = '<video src="'+url+'" controls style="max-width:100%;max-height:120px;border-radius:4px;margin-top:6px"></video>';
+  var files = el.files;
+  if(!files || files.length === 0) return;
+  var isVideo = el.accept && el.accept.indexOf('video') !== -1;
+  if (isVideo || files.length === 1) {
+    var f = files[0];
+    var ext = f.name.split('.').pop().toLowerCase();
+    var isTGA = ext === 'tga';
+    var onLoaded = function(url) {
+      if(!_nodeCache[id]) _nodeCache[id]={};
+      _nodeCache[id].defaultValue=url;
+      _nodeCache[id].fileName=f.name;
+      _nodeCache[id].fileSize=f.size;
+      _nodeCache[id].images = null;
+      // Update the React node element's dataset so getNodeData / executeWorkflow can read it
+      var nodeEl=document.querySelector('[data-id="'+id+'"]');
+      if(nodeEl){
+        nodeEl.dataset.wfFileUrl=url;
+        nodeEl.dataset.wfFileName=f.name;
+      }
+      // Update mini-app field in-place
+      var infoEl = document.getElementById('wf-info-'+id);
+      var previewEl = document.getElementById('wf-preview-'+id);
+      if(infoEl){
+        infoEl.style.display = '';
+        var nameSpan = infoEl.querySelector('span');
+        if(nameSpan) {
+          nameSpan.innerHTML = '\u2714 '+esc(f.name)+(f.size?' <span style="font-size:10px;color:var(--text-muted,#6e7681)">('+Math.round(f.size/1024)+'KB)</span>':'');
+        }
+      }
+      if(previewEl){
+        previewEl.style.display = '';
+        if(isVideo){
+          previewEl.innerHTML = '<video src="'+url+'" controls style="max-width:100%;max-height:120px;border-radius:4px;margin-top:6px"></video>';
+        } else {
+          previewEl.innerHTML = '<img src="'+url+'" class="wf-output-img" style="max-width:100%;max-height:120px;border-radius:4px;margin-top:6px" ondblclick="window.__wf_showLightbox(this.src,this.title)" title="\u53CC\u51FB\u67E5\u770B\u539F\u56FE">';
+        }
+      }
+    };
+    if (isTGA) {
+      decodeTGA(f).then(function(pngUrl) { onLoaded(pngUrl); }).catch(function() { onLoaded(URL.createObjectURL(f)); });
     } else {
-      previewEl.innerHTML = '<img src="'+url+'" class="wf-output-img" style="max-width:100%;max-height:120px;border-radius:4px;margin-top:6px" ondblclick="window.__wf_showLightbox(this.src,this.title)" title="\u53CC\u51FB\u67E5\u770B\u539F\u56FE">';
+      onLoaded(URL.createObjectURL(f));
+    }
+  } else {
+    // Multiple images
+    var urls = [];
+    var totalLoaded = 0;
+    var count = files.length;
+    for (var fi = 0; fi < count; fi++) {
+      (function(f) {
+        var ext2 = f.name.split('.').pop().toLowerCase();
+        var isTGA2 = ext2 === 'tga';
+        var onImgReady = function(url) {
+          var img = new Image();
+          img.onload = function() {
+            urls.push({ url: url, width: img.naturalWidth, height: img.naturalHeight, format: f.name.split('.').pop() || 'unknown', fileName: f.name, fileSize: f.size });
+            totalLoaded++;
+            if (totalLoaded === count) {
+              if(!_nodeCache[id]) _nodeCache[id]={};
+              _nodeCache[id].defaultValue = url;
+              _nodeCache[id].fileName = count + ' files';
+              _nodeCache[id].fileSize = files[0].size;
+              _nodeCache[id].images = urls;
+              // Sync to React node
+              var nodeEl2=document.querySelector('[data-id="'+id+'"]');
+              if(nodeEl2){
+                nodeEl2.dataset.wfFileUrl=url;
+                nodeEl2.dataset.wfFileName=count+' files';
+              }
+              // Re-render mini-app field to show grid
+              renderAppView();
+            }
+          };
+          img.onerror = function() {
+            totalLoaded++;
+            if (totalLoaded >= count) {
+              if(!_nodeCache[id]) _nodeCache[id]={};
+              _nodeCache[id].images = urls;
+              if (totalLoaded === count) renderAppView();
+            }
+          };
+          img.src = url;
+        };
+        if (isTGA2) {
+          decodeTGA(f).then(function(pngUrl) { onImgReady(pngUrl); }).catch(function() {
+            totalLoaded++;
+            if (totalLoaded >= count) { renderAppView(); }
+          });
+        } else {
+          onImgReady(URL.createObjectURL(f));
+        }
+      })(files[fi]);
     }
   }
 };
 
 W.__wf_showLightbox=function(url, label){
-  lightbox.innerHTML = '<button class="wf-lb-close" onclick="event.stopPropagation();document.getElementById(\'wf-lightbox\').classList.remove(\'show\')">\u2715</button><img src="'+esc(url)+'" onclick="event.stopPropagation()" ondblclick="event.stopPropagation();document.getElementById(\'wf-lightbox\').classList.remove(\'show\')">'+(label?'<div class="wf-lb-info">'+esc(label)+'</div>':'');
+  lightbox.innerHTML = '<button class="wf-lb-close" onclick="event.stopPropagation();document.getElementById(\'wf-lightbox\').classList.remove(\'show\')">\u2715</button><img src="'+esc(url)+'" onclick="event.stopPropagation()" ondblclick="event.stopPropagation();document.getElementById(\'wf-lightbox\').classList.remove(\'show\')" oncontextmenu="event.stopPropagation();event.stopImmediatePropagation()">'+(label?'<div class="wf-lb-info">'+esc(label)+'</div>':'');
   lightbox.classList.add('show');
 };
 
